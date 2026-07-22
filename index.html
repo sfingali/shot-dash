@@ -26,7 +26,7 @@ th { position:sticky; top:0; background:var(--surface); text-align:left; padding
 th:hover { color:var(--text); }
 td { padding:5px 10px; border-bottom:1px solid #1a1a1a; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 tr { cursor:pointer; transition:background 0.1s; }
-tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.selected td { color:#fff; } tr.dragging { opacity:0.4; } tr.drag-over { border-top:2px solid var(--accent); } tr[draggable] { cursor:grab; } tr[draggable]:active { cursor:grabbing; } tr.dragging { opacity:0.4; } tr.drag-over { border-top:2px solid var(--accent); }
+tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.selected td { color:#fff; } tr.dragging { opacity:0.4; } tr.drag-over { border-top:2px solid var(--accent); } tr[draggable] { cursor:grab; } .drag-handle { cursor:grab; text-align:center; color:var(--text-dim); user-select:none; width:24px; padding:5px 4px !important; } .drag-handle:active { cursor:grabbing; } .drag-handle:hover { color:var(--accent); } tr.dragging { opacity:0.4; } tr.drag-over { border-top:2px solid var(--accent); }
 .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
 .s-gen { background:#8b8; } .s-app { background:var(--green); } .s-pen { background:var(--accent); } .s-edi { background:var(--blue); }
 .viewer-empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:14px; }
@@ -66,7 +66,7 @@ tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.s
 <span style="font-size:11px;color:var(--text-dim)" id="count">0 shots</span>
 </div>
 <div class="table-wrap"><table><thead><tr>
-<th data-col="scene_number" onclick="sortBy('scene_number')">Sc</th>
+<th style="width:24px;cursor:default">≡</th><th data-col="scene_number" onclick="sortBy('scene_number')">Sc</th>
 <th data-col="shot_number" onclick="sortBy('shot_number')">#</th>
 <th data-col="generation_number" onclick="sortBy('generation_number')">Gen</th>
 <th data-col="status" onclick="sortBy('status')">Status</th>
@@ -139,7 +139,7 @@ function renderGrid(){
         const file = sh.output_file || '';
         const hasFrame = sh._frame_url ? ' \ud83d\udcf7' : '';
         const scene = sc.replace(/'/g, "\\'");
-        return '<tr' + sel + ' onclick="selectShot(' + realIdx + ')" draggable="true" data-scene="' + scene + '" data-idx="' + realIdx + '" data-fn="' + esc(file) + '" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropRow(event)"><td>' + sc + '</td><td class="shot-num">' + sn + '</td><td>' + (sh.generation_number || '') + '</td><td><span class="status-dot s-' + status + '"></span>' + status + '</td><td>' + ((sh.characters || '').substring(0, 20)) + '</td><td>' + ((sh.location || '').substring(0, 25)) + '</td><td>' + (sh.lens || '') + '</td><td>' + (sh.generation_method || '') + '</td><td>' + (sh.iteration_count || '') + '</td><td>' + (sh.estimated_cost || '') + '</td><td title="' + esc(sh.verbatim_instructions || '') + '">' + instr + '</td><td>' + file + hasFrame + '</td></tr>';
+        return '<tr' + sel + '><td class="drag-handle" draggable="true" ondragstart="dragStart(event)" onclick="event.stopPropagation()" title="Drag to reorder">≡</td><td onclick="selectShot(' + realIdx + ')" data-scene="' + scene + '" data-idx="' + realIdx + '" data-fn="' + esc(file) + '" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropRow(event)"><td>' + sc + '</td><td class="shot-num">' + sn + '</td><td>' + (sh.generation_number || '') + '</td><td><span class="status-dot s-' + status + '"></span>' + status + '</td><td>' + ((sh.characters || '').substring(0, 20)) + '</td><td>' + ((sh.location || '').substring(0, 25)) + '</td><td>' + (sh.lens || '') + '</td><td>' + (sh.generation_method || '') + '</td><td>' + (sh.iteration_count || '') + '</td><td>' + (sh.estimated_cost || '') + '</td><td title="' + esc(sh.verbatim_instructions || '') + '">' + instr + '</td><td>' + file + hasFrame + '</td></tr>';
     }).join('');
 }
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
