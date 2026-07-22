@@ -66,6 +66,22 @@ def read_csv():
     return rows, fieldnames
 
 def write_csv(rows, fieldnames):
+    # Auto-backup before every write
+    backup_dir = os.path.join(os.path.dirname(os.path.abspath(CSV_PATH)), ".csv_backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    import time
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    backup_path = os.path.join(backup_dir, f"storyboard_shots.{ts}.csv")
+    with open(backup_path, "w", newline="") as bf:
+        bw = csv.DictWriter(bf, fieldnames=fieldnames)
+        bw.writeheader()
+        bw.writerows(rows)
+    # Prune backups older than 7 days, keep max 50
+    backups = sorted(os.listdir(backup_dir))
+    if len(backups) > 50:
+        for old in backups[:-50]:
+            os.remove(os.path.join(backup_dir, old))
+    # Write main file
     tmp = CSV_PATH + ".tmp"
     with open(tmp, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
