@@ -909,7 +909,6 @@ function renderRefs(){
         return '<div class="card"><div class="thumb">' +
           '<img src="/api/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '" loading="lazy">' +
           '<div class="acts">' +
-          '<button data-edit="' + escA(fn) + '" title="Image-to-image edit">✎</button>' +
           '<button data-move="' + escA(fn) + '" title="Move to another category">\u2192</button>' +
           '<button class="del" data-del="' + escA(fn) + '" title="Delete">\u00d7</button>' +
           '</div></div><div class="name">' + esc(label) + '</div></div>';
@@ -939,8 +938,6 @@ const view = e.target.closest('[data-view]');
       await api('/api/ref_move', {file: fn, category: cat.trim()});
       toast('Moved to ' + cat.trim());
       fetchRefs();
-    } else if (edit){
-      showRefEdit(edit.getAttribute('data-edit'));
     } else if (view){
       $('fullImg').src = '/api/ref/' + encodeURIComponent(view.getAttribute('data-view'));
       $('imageModal').classList.add('open');
