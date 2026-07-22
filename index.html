@@ -250,8 +250,7 @@ var r=await fetch('/api/swap_version',{method:'POST',headers:{'Content-Type':'ap
 if(r.ok){toast('Switched to '+fn);refreshData();}
 else{toast('Swap failed',true);}
 }
-async 
-async function showEditPrompt(){document.getElementById('editModal').classList.add('open');document.getElementById('editInstr').focus();}
+function showEditPrompt(){document.getElementById('editModal').classList.add('open');document.getElementById('editInstr').focus();}
 function hideEditPrompt(){document.getElementById('editModal').classList.remove('open');}
 async function editShot(){
 if(selectedIdx<0)return;
