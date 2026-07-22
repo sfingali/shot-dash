@@ -53,7 +53,7 @@ def parse_args():
 CSV_COLUMNS = [
     "scene_number", "shot_number", "verbatim_instructions",
     "lens", "aspect_ratio", "quality", "curated_description",
-    "prompt", "output_file", "status"
+    "prompt", "output_file", "status", "version_history"
 ]
 
 def read_csv():
@@ -245,11 +245,14 @@ class Handler(BaseHTTPRequestHandler):
             if row_index < 0 or row_index >= len(rows):
                 return self._error("Row index out of range", 400)
             shot = rows[row_index]
-            # Build prompt: curated_description > verbatim_instructions
-            base = (shot.get("curated_description") or shot.get("verbatim_instructions") or "").strip()
-            if not base:
-                return self._error("Shot has no description to generate from", 400)
-            prompt = base + " Photorealistic cinematic still from an indie horror film. No text, no watermark."
+            # Build prompt: use existing prompt if available (regeneration), else build from description
+            if shot.get("prompt"):
+                prompt = shot["prompt"]
+            else:
+                base = (shot.get("curated_description") or shot.get("verbatim_instructions") or "").strip()
+                if not base:
+                    return self._error("Shot has no description to generate from", 400)
+                prompt = base + " Photorealistic cinematic still from an indie horror film. No text, no watermark."
             # Load API key
             key = None
             env_path = os.path.expanduser("/opt/data/profiles/heavy/.env")
@@ -289,12 +292,33 @@ class Handler(BaseHTTPRequestHandler):
                 img_bytes = base64.b64decode(d[0]["b64_json"])
             else:
                 img_bytes = urllib.request.urlopen(d[0]["url"]).read()
-            # Save image
-            output_file = shot.get("output_file", "").strip()
-            if not output_file:
-                sc = shot.get("scene_number", "XX")
-                sn = shot.get("shot_number", "1")
-                output_file = f"waif_sc_{sc}_v{sn}.png"
+            # Versioning: push current file to history, increment version
+            import re
+            old_file = shot.get("output_file", "").strip()
+            old_sc = shot.get("scene_number", "XX")
+            if old_file:
+                # Push current to version history
+                try:
+                    history = json.loads(shot.get("version_history") or "[]")
+                except json.JSONDecodeError:
+                    history = []
+                history.append(old_file)
+                shot["version_history"] = json.dumps(history)
+                # Determine new version number
+                v_match = re.search(r'_v(\d+)', old_file)
+                if v_match:
+                    new_v = int(v_match.group(1)) + 1
+                    base_name = old_file[:v_match.start()]
+                    ext = os.path.splitext(old_file)[1]
+                else:
+                    new_v = 2
+                    base_name = os.path.splitext(old_file)[0]
+                    ext = os.path.splitext(old_file)[1]
+            else:
+                new_v = 1
+                base_name = f"waif_sc_{old_sc}"
+                ext = ".png"
+            output_file = f"{base_name}_v{new_v}{ext}"
             out_path = os.path.join(FRAMES_DIR, output_file)
             with open(out_path, "wb") as of:
                 of.write(img_bytes)
@@ -309,7 +333,36 @@ class Handler(BaseHTTPRequestHandler):
             if not shot.get("lens"):
                 shot["lens"] = "28mm"
             write_csv(rows, fieldnames)
-            self._json({"ok": True, "output_file": output_file, "size_kb": len(img_bytes) // 1024})
+            self._json({"ok": True, "output_file": output_file, "size_kb": len(img_bytes) // 1024, "version": new_v, "history": json.loads(shot.get("version_history", "[]"))})
+
+        elif self.path == "/api/swap_version":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except json.JSONDecodeError:
+                return self._error("Invalid JSON")
+            row_index = data.get("row_index")
+            swap_file = data.get("swap_file", "").strip()
+            if row_index is None or not swap_file:
+                return self._error("Missing row_index or swap_file")
+            rows, fieldnames = read_csv()
+            if row_index < 0 or row_index >= len(rows):
+                return self._error("Row index out of range", 400)
+            shot = rows[row_index]
+            try:
+                history = json.loads(shot.get("version_history") or "[]")
+            except json.JSONDecodeError:
+                history = []
+            if swap_file not in history:
+                return self._error("File not in version history", 400)
+            # Swap: current goes into history, swap_file becomes current
+            current = shot["output_file"]
+            history.remove(swap_file)
+            history.append(current)
+            shot["output_file"] = swap_file
+            shot["version_history"] = json.dumps(history)
+            write_csv(rows, fieldnames)
+            self._json({"ok": True, "current": swap_file, "history": history})
 
         elif self.path == "/api/create":
             length = int(self.headers.get("Content-Length", 0))

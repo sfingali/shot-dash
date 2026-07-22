@@ -85,9 +85,13 @@ tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.s
 <div class="panel-viewer" id="viewerPanel">
 <div class="viewer-empty" id="viewerEmpty">← Select a shot</div>
 <div class="viewer-image" id="viewerImage" style="display:none"><img id="frameImg" src="" alt="" onclick="openModal()" title="Click to enlarge"></div>
+<div id="versionStrip" style="display:none;padding:4px 14px;border-top:1px solid var(--border);overflow-x:auto;white-space:nowrap">
+<span style="font-size:10px;color:var(--text-dim);vertical-align:top;line-height:50px;margin-right:6px">History:</span>
+</div>
 <div class="viewer-info" id="viewerInfo" style="display:none"></div>
 <div class="viewer-actions" id="viewerActions" style="display:none">
 <button id="genBtn" class="btn-approve" onclick="generateShot()" style="display:none">⚡ Generate</button>
+<button id="regenBtn" class="btn-approve" onclick="regenerateShot()" style="display:none">🔄 Regenerate</button>
 <select id="statusSelect" onchange="changeStatus()">
 <option value="pending">Pending</option><option value="curated">Curated</option><option value="generated">Generated</option><option value="approved">Approved</option><option value="edited">Edited</option>
 </select>
@@ -168,7 +172,10 @@ function renderGrid(){
 }
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 function selectShot(idx){selectedIdx=idx;renderGrid();if(idx<0||idx>=shots.length){showViewer(false);return;}const sh=shots[idx];showViewer(true);document.getElementById('statusSelect').value=(sh.status||'pending').toLowerCase();
-var genBtn=document.getElementById('genBtn');var st=(sh.status||'').toLowerCase();genBtn.style.display=(st==='pending'||st==='curated')?'inline-block':'none';document.getElementById('viewerInfo').innerHTML=[`<div class="row"><span class="label">Scene</span>${sh.scene_number||'—'} / Shot ${sh.shot_number||'—'} (Gen ${sh.generation_number||'—'})</div>`,`<div class="row"><span class="label">Characters</span>${sh.characters||'—'}</div>`,`<div class="row"><span class="label">Location</span>${sh.location||'—'}</div>`,`<div class="row"><span class="label">Lens</span>${sh.lens||'—'} · ${sh.aspect_ratio||'—'} · ${sh.generation_method||'—'} · v${sh.iteration_count||'1'} · ${sh.estimated_cost||'—'}</div>`,`<div class="row"><span class="label">Endpoint</span>${sh.endpoint||'—'}</div>`,sh.fountain_text?`<div class="row"><span class="label">Fountain</span><span style="white-space:pre-wrap;font-style:italic">${esc(sh.fountain_text).substring(0,400)}</span></div>`:'',sh.curated_description?`<div class="row"><span class="label">Curated</span>${esc(sh.curated_description).substring(0,200)}</div>`:'',sh.prompt?`<div class="row"><span class="label">API Prompt</span><span style="white-space:pre-wrap">${esc(sh.prompt).substring(0,400)}</span></div>`:'',sh.iteration_history?`<div class="row"><span class="label">Iterations</span><span style="white-space:pre-wrap;font-size:10px">${esc(sh.iteration_history).substring(0,500)}</span></div>`:'',sh.output_file?`<div class="row"><span class="label">File</span>${esc(sh.output_file)}</div>`:''].join('');if(sh._frame_url){document.getElementById('frameImg').src=sh._frame_url;document.getElementById('viewerImage').style.display='flex';}else{document.getElementById('viewerImage').style.display='none';}}
+var genBtn=document.getElementById('genBtn');var regenBtn=document.getElementById('regenBtn');var st=(sh.status||'').toLowerCase();
+genBtn.style.display=(st==='pending'||st==='curated')?'inline-block':'none';
+regenBtn.style.display=(st==='generated'||st==='selected'||st==='edited')?'inline-block':'none';
+renderVersionHistory(sh);document.getElementById('viewerInfo').innerHTML=[`<div class="row"><span class="label">Scene</span>${sh.scene_number||'—'} / Shot ${sh.shot_number||'—'} (Gen ${sh.generation_number||'—'})</div>`,`<div class="row"><span class="label">Characters</span>${sh.characters||'—'}</div>`,`<div class="row"><span class="label">Location</span>${sh.location||'—'}</div>`,`<div class="row"><span class="label">Lens</span>${sh.lens||'—'} · ${sh.aspect_ratio||'—'} · ${sh.generation_method||'—'} · v${sh.iteration_count||'1'} · ${sh.estimated_cost||'—'}</div>`,`<div class="row"><span class="label">Endpoint</span>${sh.endpoint||'—'}</div>`,sh.fountain_text?`<div class="row"><span class="label">Fountain</span><span style="white-space:pre-wrap;font-style:italic">${esc(sh.fountain_text).substring(0,400)}</span></div>`:'',sh.curated_description?`<div class="row"><span class="label">Curated</span>${esc(sh.curated_description).substring(0,200)}</div>`:'',sh.prompt?`<div class="row"><span class="label">API Prompt</span><span style="white-space:pre-wrap">${esc(sh.prompt).substring(0,400)}</span></div>`:'',sh.iteration_history?`<div class="row"><span class="label">Iterations</span><span style="white-space:pre-wrap;font-size:10px">${esc(sh.iteration_history).substring(0,500)}</span></div>`:'',sh.output_file?`<div class="row"><span class="label">File</span>${esc(sh.output_file)}</div>`:''].join('');if(sh._frame_url){document.getElementById('frameImg').src=sh._frame_url;document.getElementById('viewerImage').style.display='flex';}else{document.getElementById('viewerImage').style.display='none';}}
 function showViewer(s){document.getElementById('viewerEmpty').style.display=s?'none':'flex';document.getElementById('viewerInfo').style.display=s?'block':'none';document.getElementById('viewerActions').style.display=s?'flex':'none';if(!s)document.getElementById('viewerImage').style.display='none';}
 function changeStatus(){if(selectedIdx<0)return;updateStatus(selectedIdx,document.getElementById('statusSelect').value);}
 function approveShot(){if(selectedIdx<0)return;updateStatus(selectedIdx,'approved');document.getElementById('statusSelect').value='approved';}
@@ -209,6 +216,31 @@ refreshData();
 var err=await r.json();
 toast(err.error||'Generation failed',true);
 }
+}
+
+function renderVersionHistory(sh){
+var strip=document.getElementById('versionStrip');
+try{var h=JSON.parse(sh.version_history||'[]');}catch(e){h=[];}
+if(h.length===0){strip.style.display='none';return;}
+strip.style.display='block';
+var html='<span style="font-size:10px;color:var(--text-dim);vertical-align:top;line-height:50px;margin-right:6px">History:</span>';
+h.forEach(function(f){
+html+='<div class="ref-thumb" style="width:50px;height:50px" onclick="swapVersion(\''+f+'\')" title="'+f+'"><img src="/api/frame/'+encodeURIComponent(f)+'" loading="lazy"></div>';
+});
+strip.innerHTML=html;
+}
+async function swapVersion(fn){
+var r=await fetch('/api/swap_version',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx,swap_file:fn})});
+if(r.ok){toast('Switched to '+fn);refreshData();}
+else{toast('Swap failed',true);}
+}
+async function regenerateShot(){
+if(selectedIdx<0)return;
+var btn=document.getElementById('regenBtn');btn.disabled=true;btn.textContent='Regenerating...';
+var r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx})});
+btn.disabled=false;btn.textContent='🔄 Regenerate';
+if(r.ok){var data=await r.json();toast('Regenerated: '+data.output_file+' (v'+data.version+')');refreshData();}
+else{var err=await r.json();toast(err.error||'Regenerate failed',true);}
 }
 
 function refreshData(){fetchShots().then(()=>{if(selectedIdx>=0)selectShot(selectedIdx);});}
