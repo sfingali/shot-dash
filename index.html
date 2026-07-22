@@ -26,7 +26,7 @@ th { position:sticky; top:0; background:var(--surface); text-align:left; padding
 th:hover { color:var(--text); }
 td { padding:5px 10px; border-bottom:1px solid #1a1a1a; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 tr { cursor:pointer; transition:background 0.1s; }
-tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.selected td { color:#fff; } tr.dragging { opacity:0.4; } tr.drag-over { border-top:2px solid var(--accent); } tr[draggable="true"] { cursor:grab; } tr[draggable] { cursor:grab; }  tr.dragging { opacity:0.4; } tr.drag-over { border-top:2px solid var(--accent); } tr[draggable="true"] { cursor:grab; }
+tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.selected td { color:#fff; } tr.dragging { opacity:0.4; } tr.drag-over { border-top:2px solid var(--accent); } tr[draggable="true"] { cursor:grab; } 
 .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
 .s-gen { background:#8b8; } .s-app { background:var(--green); } .s-pen { background:var(--accent); } .s-edi { background:var(--blue); }
 .viewer-empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:14px; }
@@ -153,6 +153,12 @@ function openModal(){const s=shots[selectedIdx];if(!s||!s._frame_url)return;docu
 function openRefModal(p){document.getElementById('modalImg').src='/api/ref/'+encodeURIComponent(p);document.getElementById('modalName').textContent=p;document.getElementById('modal').classList.add('open');}
 function closeModal(){document.getElementById('modal').classList.remove('open');}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.key==='ArrowDown'){e.preventDefault();selectShot(Math.min(selectedIdx+1,shots.length-1));}if(e.key==='ArrowUp'){e.preventDefault();selectShot(Math.max(selectedIdx-1,0));}if(e.key==='a'&&!e.ctrlKey&&!e.metaKey&&selectedIdx>=0)approveShot();});
+// ── Drag and Drop ──
+let dragSrcIdx=-1;
+function dragStart(e){const tr=e.target.closest('tr');if(!tr)return;dragSrcIdx=parseInt(tr.dataset.idx);e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',tr.dataset.idx);tr.classList.add('dragging');}
+function dragOver(e){e.preventDefault();e.dataTransfer.dropEffect='move';const tr=e.target.closest('tr');if(!tr)return;const ts=tr.dataset.scene,ss=shots[dragSrcIdx],sns=ss?(ss.scene_number||'—'):'';if(ts===sns||ts==='—'||sns==='—')tr.classList.add('drag-over');}
+function dragLeave(e){e.target.closest('tr')?.classList.remove('drag-over');}
+async function dropRow(e){e.preventDefault();const tr=e.target.closest('tr');if(!tr)return;tr.classList.remove('drag-over');const ti=parseInt(tr.dataset.idx),ts=tr.dataset.scene,ss=shots[dragSrcIdx],sns=ss?(ss.scene_number||'—'):'';if(ts!==sns&&ts!=='—'&&sns!=='—'){toast('Drop within same scene only',true);return;}if(dragSrcIdx<0||dragSrcIdx===ti)return;const scs=shots.map((s,i)=>({...s,_idx:i})).filter(s=>(s.scene_number||'—')===sns).sort((a,b)=>(parseFloat(a.shot_number)||0)-(parseFloat(b.shot_number)||0));const si=scs.find(s=>s._idx===dragSrcIdx),ti2=scs.find(s=>s._idx===ti);if(!si||!ti2)return;const sp=scs.indexOf(si),tp=scs.indexOf(ti2);scs.splice(sp,1);scs.splice(tp,0,si);const no=scs.map(s=>shots[s._idx].output_file);const r=await fetch('/api/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_number:sns==='—'?'':sns,order:no})});if(r.ok){toast('Reordered');refreshData();}else{toast('Reorder failed',true);}}
 fetchShots();fetchRefs();
 </script>
 </body>
