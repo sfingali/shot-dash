@@ -261,8 +261,6 @@ function selectShot(i){
   var fi=document.getElementById('frameImg');
   fi.src='';fi.style.display='none';
   document.getElementById('viewerEmpty').style.display='block';
-  var strip=document.getElementById('versionStrip');
-  if(strip)strip.innerHTML='';
   // Populate info
   var sh=s;
   function esc2(t){return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -298,13 +296,12 @@ function renderVersionHistory(sh){
   var hist=[];try{hist=JSON.parse(sh.version_history||'[]');}catch(e){}
   if(!hist.length){strip.innerHTML='';return;}
   strip.innerHTML=hist.map(function(fn,i){
-    return'<img src="/api/frame/'+encodeURIComponent(fn)+'" title="'+fn+'" onerror="this.style.display=\'none\'" onclick="swapVersion('+selectedIdx+',\''+fn+'\')">';
+    return'<img src="/api/frame/'+encodeURIComponent(fn)+'" title="'+fn+'" onclick="swapVersion('+selectedIdx+',\''+fn+'\')">';
   }).join('');
 }
 async function swapVersion(idx,swapFile){
   var r=await fetch('/api/swap_version',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:idx,swap_file:swapFile})});
-  if(r.ok){var d=await r.json();toast('Swapped to '+swapFile);refreshData();}
-  else{var e=await r.json();toast(e.error||'Swap failed',true);}
+  if(r.ok){refreshData();toast('Swapped to '+swapFile);}else{toast('Swap failed',true);}
 }
 // ── Actions ──
 async function updateStatus(newStatus){

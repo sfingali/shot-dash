@@ -571,21 +571,6 @@ class Handler(BaseHTTPRequestHandler):
             body = b''
             body += enc(['--' + boundary, 'Content-Disposition: form-data; name="image"; filename="source.png"', 'Content-Type: image/png', ''])
             body += source_data + b'\r\n'
-            # Mask: all-white = edit entire image (no masked-off regions)
-            # Create a 1px white PNG as mask (API scales it)
-            import struct, zlib
-            def _white_png():
-                # Minimal 1x1 white RGBA PNG
-                header = b'\x89PNG\r\n\x1a\n'
-                def chunk(typ, data):
-                    c = typ + data
-                    return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
-                ihdr = struct.pack('>IIBBBBB', 1, 1, 8, 6, 0, 0, 0)
-                raw = zlib.compress(b'\x00\xff\xff\xff\xff')
-                return header + chunk(b'IHDR', ihdr) + chunk(b'IDAT', raw) + chunk(b'IEND', b'')
-            mask_data = _white_png()
-            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="mask"; filename="mask.png"', 'Content-Type: image/png', ''])
-            body += mask_data + b'\r\n'
             body += enc(['--' + boundary, 'Content-Disposition: form-data; name="prompt"', '', edit_prompt])
             body += enc(['--' + boundary, 'Content-Disposition: form-data; name="model"', '', 'gpt-image-2'])
             body += enc(['--' + boundary, 'Content-Disposition: form-data; name="size"', '', '2560x1072'])
@@ -854,26 +839,14 @@ class Handler(BaseHTTPRequestHandler):
                 history = []
             if swap_file not in history:
                 return self._error("File not in version history", 400)
-            # Verify swap_file exists on disk
-            swap_path = os.path.join(FRAMES_DIR, swap_file)
-            if not os.path.exists(swap_path):
-                # Try finding it
-                found = None
-                for p in Path(FRAMES_DIR).rglob(swap_file):
-                    found = str(p); break
-                if not found:
-                    return self._error("File not found on disk: " + swap_file, 400)
             # Swap: current goes into history, swap_file becomes current
             current = shot["output_file"]
             history.remove(swap_file)
             history.append(current)
             shot["output_file"] = swap_file
             shot["version_history"] = json.dumps(history)
-            # Remove missing files from history (prevent broken thumbnails)
-            clean_hist = [h for h in history if os.path.exists(os.path.join(FRAMES_DIR, h)) or any(Path(FRAMES_DIR).rglob(h))]
-            shot["version_history"] = json.dumps(clean_hist)
             write_csv(rows, fieldnames)
-            self._json({"ok": True, "current": swap_file, "history": clean_hist})
+            self._json({"ok": True, "current": swap_file, "history": history})
 
         elif self.path == "/api/create":
             length = int(self.headers.get("Content-Length", 0))
