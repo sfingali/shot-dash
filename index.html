@@ -343,7 +343,11 @@ var s=document.getElementById('refStrip');
 if(s.style.display==='none'){s.style.display='block';fetchRefs();}
 else{s.style.display='none';}
 }
-fetchShots();fetchRefs();setTimeout(function(){if(shots.length===0)fetchShots();},800);
+(function init(){
+var tries=0;
+function load(){tries++;fetchShots().then(function(){fetchRefs();}).catch(function(e){if(tries<5)setTimeout(load,600);else{document.getElementById('grid').innerHTML='<tr><td colspan=12>Load failed: '+e.message+'</td></tr>';}});}
+load();
+})();
 </script>
 </body>
 </html>
