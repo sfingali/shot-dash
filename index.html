@@ -142,6 +142,7 @@ tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.s
 
 <div class="toast" id="toast"></div>
 <script>
+console.log("SCRIPT STARTED");
 let shots=[],selectedIdx=-1,sortCol='scene_number',sortDir=1;
 async function fetchShots(){const r=await fetch('/api/shots');shots=(await r.json()).shots;refreshFrames();renderStats();}
 async function refreshFrames(){const r=await fetch('/api/frames'),d=await r.json();for(const s of shots){const f=d.frames[s.output_file||'']||d.frames_lower[(s.output_file||'').toLowerCase()];s._frame_url=f?'/api/frame/'+encodeURIComponent(f):null;}renderGrid();}
@@ -343,11 +344,9 @@ var s=document.getElementById('refStrip');
 if(s.style.display==='none'){s.style.display='block';fetchRefs();}
 else{s.style.display='none';}
 }
-(function init(){
-var tries=0;
-function load(){tries++;fetchShots().then(function(){fetchRefs();}).catch(function(e){if(tries<5)setTimeout(load,600);else{document.getElementById('grid').innerHTML='<tr><td colspan=12>Load failed: '+e.message+'</td></tr>';}});}
-load();
-})();
+function retryLoad(){document.getElementById('retryBtn').style.display='none';fetchShots().then(function(){fetchRefs();}).catch(function(e){document.getElementById('retryBtn').style.display='inline-block';});}
+fetchShots().then(function(){fetchRefs();}).catch(function(){document.getElementById('retryBtn').style.display='inline-block';});
+setTimeout(function(){if(shots.length===0)document.getElementById('retryBtn').style.display='inline-block';},1500);
 </script>
 </body>
 </html>
