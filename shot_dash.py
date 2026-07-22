@@ -204,6 +204,23 @@ class Handler(BaseHTTPRequestHandler):
             write_csv(rows, fieldnames)
             self._json({"ok": True})
 
+        elif self.path == "/api/create":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except json.JSONDecodeError:
+                return self._error("Invalid JSON")
+            rows, fieldnames = read_csv()
+            new_row = {f: data.get(f, "") for f in fieldnames}
+            if not new_row.get("status"):
+                new_row["status"] = "pending"
+            sc = new_row.get("scene_number", "")
+            existing = [int(r.get("shot_number") or 0) for r in rows if r.get("scene_number") == sc]
+            new_row["shot_number"] = str(max(existing) + 1 if existing else 1)
+            rows.append(new_row)
+            write_csv(rows, fieldnames)
+            self._json({"ok": True, "row": new_row})
+
         elif self.path == "/api/update":
             length = int(self.headers.get("Content-Length", 0))
             try:
