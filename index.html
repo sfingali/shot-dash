@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shot Dash</title>
+<style>
+:root { --bg:#0d0d0d; --surface:#1a1a1a; --border:#2a2a2a; --text:#ccc; --text-dim:#777; --accent:#c8a84e; --accent-dim:#3d3518; --green:#4a9; --red:#c44; --blue:#68a; --font:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:var(--font); background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+header { display:flex; align-items:center; gap:16px; padding:8px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
+header h1 { font-size:16px; font-weight:600; color:var(--accent); letter-spacing:0.5px; }
+header .stats { font-size:12px; color:var(--text-dim); margin-left:auto; }
+.badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; margin-left:8px; }
+.badge-gen { background:#2a3a1a; color:#8b8; } .badge-app { background:#1a3a2a; color:var(--green); } .badge-pen { background:#2a2a1a; color:var(--accent); } .badge-edi { background:#1a2a3a; color:var(--blue); }
+main { display:flex; flex:1; overflow:hidden; }
+.panel-grid { flex:1; display:flex; flex-direction:column; border-right:1px solid var(--border); min-width:0; }
+.panel-viewer { width:55%; display:flex; flex-direction:column; background:var(--surface); }
+.panel-refs { height:120px; flex-shrink:0; border-top:1px solid var(--border); background:var(--surface); overflow-x:auto; overflow-y:hidden; white-space:nowrap; padding:8px; }
+.toolbar { display:flex; gap:8px; padding:8px 12px; border-bottom:1px solid var(--border); flex-shrink:0; align-items:center; }
+.toolbar input,.toolbar select { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:4px 8px; font-size:12px; }
+.toolbar input { width:200px; } .toolbar .sep { flex:1; }
+.table-wrap { flex:1; overflow:auto; }
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th { position:sticky; top:0; background:var(--surface); text-align:left; padding:6px 10px; color:var(--text-dim); font-weight:500; border-bottom:1px solid var(--border); cursor:pointer; user-select:none; white-space:nowrap; }
+th:hover { color:var(--text); }
+td { padding:5px 10px; border-bottom:1px solid #1a1a1a; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+tr { cursor:pointer; transition:background 0.1s; }
+tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.selected td { color:#fff; }
+.status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+.s-gen { background:#8b8; } .s-app { background:var(--green); } .s-pen { background:var(--accent); } .s-edi { background:var(--blue); }
+.viewer-empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:14px; }
+.viewer-image { flex:1; display:flex; align-items:center; justify-content:center; padding:16px; overflow:auto; }
+.viewer-image img { max-width:100%; max-height:100%; object-fit:contain; border-radius:2px; cursor:pointer; }
+.viewer-info { padding:10px 14px; border-top:1px solid var(--border); font-size:12px; flex-shrink:0; }
+.viewer-info .row { display:flex; gap:16px; margin-bottom:4px; }
+.viewer-info .label { color:var(--text-dim); min-width:60px; }
+.viewer-actions { display:flex; gap:6px; padding:8px 14px; border-top:1px solid var(--border); flex-shrink:0; }
+.viewer-actions button,.viewer-actions select { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:4px; padding:5px 12px; font-size:12px; cursor:pointer; }
+.viewer-actions button:hover { background:#333; border-color:#555; }
+.btn-approve { background:#1a3a2a!important; border-color:#2a5a3a!important; color:var(--green)!important; }
+.btn-approve:hover { background:#2a4a3a!important; }
+.ref-thumb { display:inline-block; width:90px; height:90px; margin-right:8px; border:1px solid var(--border); border-radius:4px; overflow:hidden; cursor:pointer; position:relative; flex-shrink:0; }
+.ref-thumb img { width:100%; height:100%; object-fit:cover; }
+.ref-thumb:hover { border-color:var(--accent); }
+.ref-thumb .ref-label { position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.8); color:var(--text-dim); font-size:9px; padding:2px 4px; text-align:center; overflow:hidden; text-overflow:ellipsis; }
+.modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:100; align-items:center; justify-content:center; flex-direction:column; }
+.modal.open { display:flex; }
+.modal img { max-width:95vw; max-height:85vh; object-fit:contain; }
+.modal .modal-close { position:absolute; top:16px; right:24px; color:#fff; font-size:28px; cursor:pointer; background:none; border:none; }
+.modal .modal-name { color:var(--text-dim); margin-top:10px; font-size:12px; }
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--accent); color:#000; padding:8px 20px; border-radius:6px; font-size:13px; font-weight:500; z-index:200; opacity:0; transition:opacity 0.3s; pointer-events:none; }
+.toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<header><h1>🎬 Shot Dash</h1><span class="stats" id="stats">Loading…</span></header>
+<main>
+<div class="panel-grid">
+<div class="toolbar">
+<input type="text" id="search" placeholder="Filter shots…" oninput="renderGrid()">
+<select id="statusFilter" onchange="renderGrid()">
+<option value="">All</option><option value="pending">Pending</option><option value="curated">Curated</option><option value="generated">Generated</option><option value="approved">Approved</option><option value="edited">Edited</option>
+</select>
+<span class="sep"></span>
+<span style="font-size:11px;color:var(--text-dim)" id="count">0 shots</span>
+</div>
+<div class="table-wrap"><table><thead><tr>
+<th data-col="scene_number" onclick="sortBy('scene_number')">Sc</th>
+<th data-col="shot_number" onclick="sortBy('shot_number')">#</th>
+<th data-col="status" onclick="sortBy('status')">Status</th>
+<th data-col="lens" onclick="sortBy('lens')">Lens</th>
+<th data-col="aspect_ratio" onclick="sortBy('aspect_ratio')">Ratio</th>
+<th>Instructions</th>
+<th data-col="output_file" onclick="sortBy('output_file')">File</th>
+</tr></thead><tbody id="grid"></tbody></table></div>
+</div>
+<div class="panel-viewer" id="viewerPanel">
+<div class="viewer-empty" id="viewerEmpty">← Select a shot</div>
+<div class="viewer-image" id="viewerImage" style="display:none"><img id="frameImg" src="" alt="" onclick="openModal()" title="Click to enlarge"></div>
+<div class="viewer-info" id="viewerInfo" style="display:none"></div>
+<div class="viewer-actions" id="viewerActions" style="display:none">
+<select id="statusSelect" onchange="changeStatus()">
+<option value="pending">Pending</option><option value="curated">Curated</option><option value="generated">Generated</option><option value="approved">Approved</option><option value="edited">Edited</option>
+</select>
+<button class="btn-approve" onclick="approveShot()">✓ Approve</button>
+<button onclick="refreshData()">↻ Refresh</button>
+</div>
+</div>
+</main>
+<div class="panel-refs" id="refStrip">Loading refs…</div>
+<div class="modal" id="modal" onclick="closeModal()">
+<button class="modal-close">&times;</button>
+<img id="modalImg" src="" alt=""><div class="modal-name" id="modalName"></div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+let shots=[],selectedIdx=-1,sortCol='scene_number',sortDir=1;
+async function fetchShots(){const r=await fetch('/api/shots');shots=(await r.json()).shots;refreshFrames();renderStats();}
+async function refreshFrames(){const r=await fetch('/api/frames'),d=await r.json();for(const s of shots){const f=d.frames[s.output_file||'']||d.frames_lower[(s.output_file||'').toLowerCase()];s._frame_url=f?'/api/frame/'+encodeURIComponent(f):null;}renderGrid();}
+async function fetchRefs(){const r=await fetch('/api/refs'),d=await r.json();document.getElementById('refStrip').innerHTML=d.images.map(i=>`<div class="ref-thumb" onclick="openRefModal('${i}')" title="${i}"><img src="/api/ref/${encodeURIComponent(i)}" loading="lazy"><div class="ref-label">${i.split('/').pop()}</div></div>`).join('')||'<span style="color:var(--text-dim);padding:8px">No refs</span>';}
+function renderStats(){document.getElementById('stats').innerHTML='Shots: <span class="badge badge-gen">'+count('generated')+' gen</span><span class="badge badge-app">'+count('approved')+' app</span><span class="badge badge-pen">'+count('pending')+' pend</span><span class="badge badge-edi">'+count('edited')+' edit</span>';}
+function count(s){return shots.filter(sh=>(sh.status||'').toLowerCase()===s).length;}
+async function updateStatus(idx,status){const r=await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:idx,field:'status',value:status})});if(r.ok){shots[idx].status=status;renderGrid();renderStats();selectShot(idx);toast('→ '+status);}else{toast('Failed',true);}}
+function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.style.background=err?'var(--red)':'var(--accent)';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);}
+function renderGrid(){const s=document.getElementById('search').value.toLowerCase(),sf=document.getElementById('statusFilter').value.toLowerCase();let f=shots.filter(sh=>{if(sf&&(sh.status||'').toLowerCase()!==sf)return false;if(s){const h=[sh.scene_number,sh.shot_number,sh.status,sh.lens,sh.aspect_ratio,sh.verbatim_instructions||'',sh.curated_description||'',sh.output_file||''].join(' ').toLowerCase();if(!h.includes(s))return false;}return true;});f.sort((a,b)=>{const va=(a[sortCol]||'').toString().toLowerCase(),vb=(b[sortCol]||'').toString().toLowerCase();if(sortCol==='shot_number'||sortCol==='scene_number')return(parseFloat(va)||0-(parseFloat(vb)||0))*sortDir;return va.localeCompare(vb)*sortDir;});document.getElementById('count').textContent=f.length+' shots';document.getElementById('grid').innerHTML=f.map((sh,fi)=>{const ri=shots.indexOf(sh),sel=ri===selectedIdx?' class="selected"':'',st=(sh.status||'pending').toLowerCase();return`<tr${sel} onclick="selectShot(${ri})"><td>${sh.scene_number||'—'}</td><td>${sh.shot_number||'—'}</td><td><span class="status-dot s-${st}"></span>${st}</td><td>${sh.lens||''}</td><td>${sh.aspect_ratio||''}</td><td title="${esc(sh.verbatim_instructions||'')}">${(sh.verbatim_instructions||'').substring(0,80)}</td><td>${sh.output_file||''}${sh._frame_url?' 📷':''}</td></tr>`;}).join('');}
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+function selectShot(idx){selectedIdx=idx;renderGrid();if(idx<0||idx>=shots.length){showViewer(false);return;}const sh=shots[idx];showViewer(true);document.getElementById('statusSelect').value=(sh.status||'pending').toLowerCase();document.getElementById('viewerInfo').innerHTML=[`<div class="row"><span class="label">Scene</span>${sh.scene_number||'—'} / Shot ${sh.shot_number||'—'}</div>`,`<div class="row"><span class="label">Lens</span>${sh.lens||'—'} · ${sh.aspect_ratio||'—'} · ${sh.quality||'—'}</div>`,sh.curated_description?`<div class="row"><span class="label">Notes</span>${esc(sh.curated_description).substring(0,200)}</div>`:'',sh.output_file?`<div class="row"><span class="label">File</span>${esc(sh.output_file)}</div>`:''].join('');if(sh._frame_url){document.getElementById('frameImg').src=sh._frame_url;document.getElementById('viewerImage').style.display='flex';}else{document.getElementById('viewerImage').style.display='none';}}
+function showViewer(s){document.getElementById('viewerEmpty').style.display=s?'none':'flex';document.getElementById('viewerInfo').style.display=s?'block':'none';document.getElementById('viewerActions').style.display=s?'flex':'none';if(!s)document.getElementById('viewerImage').style.display='none';}
+function changeStatus(){if(selectedIdx<0)return;updateStatus(selectedIdx,document.getElementById('statusSelect').value);}
+function approveShot(){if(selectedIdx<0)return;updateStatus(selectedIdx,'approved');document.getElementById('statusSelect').value='approved';}
+function sortBy(c){sortCol===c?sortDir*=-1:(sortCol=c,sortDir=1);renderGrid();}
+function refreshData(){fetchShots().then(()=>{if(selectedIdx>=0)selectShot(selectedIdx);});}
+function openModal(){const s=shots[selectedIdx];if(!s||!s._frame_url)return;document.getElementById('modalImg').src=s._frame_url;document.getElementById('modalName').textContent=s.output_file||'';document.getElementById('modal').classList.add('open');}
+function openRefModal(p){document.getElementById('modalImg').src='/api/ref/'+encodeURIComponent(p);document.getElementById('modalName').textContent=p;document.getElementById('modal').classList.add('open');}
+function closeModal(){document.getElementById('modal').classList.remove('open');}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.key==='ArrowDown'){e.preventDefault();selectShot(Math.min(selectedIdx+1,shots.length-1));}if(e.key==='ArrowUp'){e.preventDefault();selectShot(Math.max(selectedIdx-1,0));}if(e.key==='a'&&!e.ctrlKey&&!e.metaKey&&selectedIdx>=0)approveShot();});
+fetchShots();fetchRefs();
+</script>
+</body>
+</html>
