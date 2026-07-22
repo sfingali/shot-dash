@@ -922,8 +922,7 @@ function renderRefs(){
 $('refsGrid').addEventListener('click', async e => {
   const del = e.target.closest('[data-del]');
   const move = e.target.closest('[data-move]');
-  const edit = e.target.closest('[data-edit]');
-const view = e.target.closest('[data-view]');
+  const view = e.target.closest('[data-view]');
   try {
     if (del){
       const fn = del.getAttribute('data-del');
@@ -951,36 +950,6 @@ function showRefGenerate(){
   $('refGenInstr').focus();
 }
 function hideRefGenerate(){ closeModal('refGenModal'); }
-function showRefEdit(fn){
-  S.refEditFile = fn;
-  $('refEditErr').classList.remove('on');
-  $('refEditInstr').classList.remove('invalid');
-  openModal('refEditModal');
-  $('refEditInstr').focus();
-}
-function hideRefEdit(){ S.refEditFile = null; closeModal('refEditModal'); }
-async function editRef(){
-  const instr = $('refEditInstr').value.trim();
-  if (!instr){
-    $('refEditErr').classList.add('on');
-    $('refEditInstr').classList.add('invalid');
-    return;
-  }
-  const fn = S.refEditFile;
-  if (!fn) return;
-  const count = Math.min(9, Math.max(1, parseInt($('refEditCount').value, 10) || 1));
-  hideRefEdit();
-  const end = startJob('Editing ref: ' + fn.split('/').pop() + (count > 1 ? ' \u00d7' + count : ''));
-  try {
-    const d = await api('/api/ref_edit', {file: fn, edit_instructions: instr, count});
-    toast('Saved ' + d.files.length + ' edit' + (d.files.length > 1 ? 's' : ''));
-    $('refEditInstr').value = '';
-    fetchRefs();
-  } catch (e){
-    toast(e.message, {error: true});
-  } finally { end(); }
-}
-
 async function generateRef(){
   const instr = $('refGenInstr').value.trim();
   if (!instr){
@@ -992,8 +961,7 @@ async function generateRef(){
   hideRefGenerate();
   const end = startJob('Reference: ' + cat);
   try {
-    const count = Math.min(9, Math.max(1, parseInt($('refGenCount').value, 10) || 1));
-  const d = await api('/api/generate_ref', {verbatim_instructions: instr, category: cat, count});
+    const d = await api('/api/generate_ref', {verbatim_instructions: instr, category: cat});
     toast('Reference saved: ' + d.file);
     $('refGenInstr').value = '';
     fetchRefs();

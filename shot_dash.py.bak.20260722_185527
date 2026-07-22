@@ -1118,18 +1118,13 @@ class Handler(BaseHTTPRequestHandler):
                           (data.get("category") or "misc").strip()) or "misc"
         key = require_openai_key()
         prompt = verbatim + ". " + HOUSE_STYLE
-        count = max(1, min(9, int(data.get("count") or 1)))
-        files = []
-        stamp = time.strftime("%Y%m%d_%H%M%S")
+        img_bytes = openai_generate_image(prompt, key)
         cat_dir = os.path.join(REFS_DIR, category)
         os.makedirs(cat_dir, exist_ok=True)
-        for n in range(count):
-            img_bytes = openai_generate_image(prompt, key)
-            fname = "ref_%s_%s_%d.png" % (category, stamp, n + 1)
-            with open(os.path.join(cat_dir, fname), "wb") as of:
-                of.write(img_bytes)
-            files.append(category + "/" + fname)
-        self._json({"ok": True, "files": files, "file": files[0],
+        fname = "ref_%s_%s.png" % (category, time.strftime("%Y%m%d_%H%M%S"))
+        with open(os.path.join(cat_dir, fname), "wb") as of:
+            of.write(img_bytes)
+        self._json({"ok": True, "file": category + "/" + fname,
                     "category": category, "size_kb": len(img_bytes) // 1024})
 
     def api_ref_delete(self, data):
@@ -1161,31 +1156,6 @@ class Handler(BaseHTTPRequestHandler):
                     "file": category + "/" + os.path.basename(filepath)})
 
 
-    def api_ref_edit(self, data):
-        rel = (data.get("file") or "").strip()
-        instructions = (data.get("edit_instructions") or "").strip()
-        if not instructions:
-            raise ApiError("Missing edit_instructions")
-        filepath = safe_path(REFS_DIR, rel)
-        if not filepath:
-            raise ApiError("Reference not found: " + rel, 404)
-        count = max(1, min(9, int(data.get("count") or 1)))
-        key = require_openai_key()
-        with open(filepath, "rb") as f:
-            source_bytes = f.read()
-        prompt = instructions + ". " + EDIT_SUFFIX
-        rel_dir = os.path.dirname(rel)
-        stem = os.path.basename(filepath).rsplit(".", 1)[0]
-        stamp = time.strftime("%Y%m%d_%H%M%S")
-        files = []
-        for n in range(count):
-            img_bytes = openai_edit_image(source_bytes, prompt, key)
-            fname = "%s_edit_%s_%d.png" % (stem, stamp, n + 1)
-            with open(os.path.join(os.path.dirname(filepath), fname), "wb") as of:
-                of.write(img_bytes)
-            files.append((rel_dir + "/" if rel_dir else "") + fname)
-        self._json({"ok": True, "files": files, "file": files[0]})
-
 Handler.POST_ROUTES = {
     "/api/reorder": Handler.api_reorder,
     "/api/create": Handler.api_create,
@@ -1199,7 +1169,6 @@ Handler.POST_ROUTES = {
     "/api/generate_ref": Handler.api_generate_ref,
     "/api/ref_delete": Handler.api_ref_delete,
     "/api/ref_move": Handler.api_ref_move,
-    "/api/ref_edit": Handler.api_ref_edit,
 }
 
 
