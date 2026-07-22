@@ -803,26 +803,49 @@ class Handler(BaseHTTPRequestHandler):
             if row_index < 0 or row_index >= len(rows):
                 return self._error("Row index out of range", 400)
             shot = rows[row_index]
-            # Build prompt: use existing if regenerating, else build cinematic prompt
-            if shot.get("prompt"):
+            # Build prompt: use existing if regenerating, else curate + build
+            if shot.get("prompt") and shot.get("curated_description"):
                 prompt = shot["prompt"]
             else:
-                base = (shot.get("curated_description") or shot.get("verbatim_instructions") or "").strip()
+                base = (shot.get("verbatim_instructions") or "").strip()
                 if not base:
                     return self._error("Shot has no description to generate from", 400)
-                # Build full cinematic prompt like the storyboarding pipeline
-                lens = shot.get("lens", "").strip()
-                loc = shot.get("location", "").strip()
-                ratio = shot.get("aspect_ratio", "2.39:1").strip()
-                parts = [base]
-                if lens:
-                    parts.append(f"Shot with {lens} lens")
-                if loc:
-                    parts.append(f"{loc}")
+                # Step 2: Curate via OpenAI LLM (same key as GPT Image 2)
+                lens_val = shot.get("lens", "28mm").strip()
+                loc_val = shot.get("location", "").strip()
+                ratio_val = shot.get("aspect_ratio", "2.39:1").strip()
+                chars_val = shot.get("characters", "").strip()
+                scene_val = shot.get("scene_number", "")
+                curation_prompt = "You are a cinematographer curating storyboard shot descriptions for an indie horror film called THE WAIF. Convert the user\'s raw shot instructions into a structured cinematic shot description.\n\nUser\'s raw instructions: \"" + base + "\"\nScene: " + scene_val + "\nLocation: " + loc_val + "\nCharacters: " + chars_val + "\nLens: " + lens_val + "\nAspect ratio: " + ratio_val + "\n\nWrite a concise curated shot description covering: camera angle and framing, lens choice, subject positioning and action, setting details, lighting, palette, and mood. Include actor names if characters are known (Jonathan Rhys Meyers as Ben, Antonia Campbell-Hughes as Waif). Use cinematic language but keep it tight — 3-5 sentences. Do NOT include anti-text phrases. Output ONLY the curated description, no preamble."
+                curated = base  # fallback
+                try:
+                    env_path = os.path.expanduser("/opt/data/profiles/heavy/.env")
+                    if os.path.exists(env_path):
+                        with open(env_path) as ef:
+                            for line in ef:
+                                if "OPENAI_KEY" in line or "VOICE_TOOLS_OPENAI_KEY" in line:
+                                    oai_key = line.strip().split("=", 1)[1].strip().strip("'").strip('"')
+                                    break
+                        if oai_key:
+                            import urllib.request as urlreq
+                            llm_body = json.dumps({"model": "gpt-4o-mini", "messages": [{"role": "user", "content": curation_prompt}], "max_tokens": 500, "temperature": 0.7}).encode()
+                            llm_req = urlreq.Request("https://api.openai.com/v1/chat/completions", data=llm_body, headers={"Authorization": "Bearer " + oai_key, "Content-Type": "application/json"})
+                            llm_resp = json.loads(urlreq.urlopen(llm_req, timeout=30).read())
+                            curated = llm_resp.get("choices", [{}])[0].get("message", {}).get("content", "").strip() or base
+                except Exception:
+                    curated = base
+                shot["curated_description"] = curated
+                # Build full cinematic prompt from curated description
+                parts = [curated]
+                if lens_val:
+                    parts.append("Shot with " + lens_val + " lens")
+                if loc_val:
+                    parts.append(loc_val)
                 parts.append("Desaturated palette, cool shadows")
                 parts.append("Photorealistic cinematic still from an indie horror film")
-                parts.append("Scope {}. No text, no watermark, no logos.".format(ratio))
+                parts.append("Scope " + ratio_val + ". No text, no watermark, no logos.")
                 prompt = ". ".join(parts)
+                shot["prompt"] = prompt
             # Load API key
             key = None
             env_path = os.path.expanduser("/opt/data/profiles/heavy/.env")
