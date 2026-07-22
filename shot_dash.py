@@ -21,6 +21,15 @@ FRAMES_DIR = "/opt/data/home/projects/the-waif/storyboards_gpt"
 REFS_DIR = "/opt/data/home/projects/the-waif/storyboard_reference"
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
+# Fountain scene → location + character lookup (from THE WAIF numbered draft)
+SCENE_LOOKUP = {
+    "11": {"location": "Motel Room", "characters": "Ben (JRM)"},
+    "12": {"location": "Motel Bathroom", "characters": "Ben (JRM)"},
+    "14": {"location": "Motel Exterior — Catwalk", "characters": "Ben (JRM), Neighbor"},
+    "15": {"location": "Pickup Truck — Highway", "characters": "Ben (JRM)"},
+    "16": {"location": "Municipal Courthouse — Exterior", "characters": "Ben (JRM)"},
+}
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 HTML_PATH = os.path.join(SCRIPT_DIR, "index.html")
 
@@ -299,6 +308,12 @@ class Handler(BaseHTTPRequestHandler):
             sc = new_row.get("scene_number", "")
             existing = [int(r.get("shot_number") or 0) for r in rows if r.get("scene_number") == sc]
             new_row["shot_number"] = str(max(existing) + 1 if existing else 1)
+            # Auto-fill location and characters from fountain data
+            if sc in SCENE_LOOKUP:
+                if not new_row.get("location"):
+                    new_row["location"] = SCENE_LOOKUP[sc]["location"]
+                if not new_row.get("characters"):
+                    new_row["characters"] = SCENE_LOOKUP[sc]["characters"]
             rows.append(new_row)
             write_csv(rows, fieldnames)
             self._json({"ok": True, "row": new_row})
