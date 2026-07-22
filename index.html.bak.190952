@@ -329,30 +329,9 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <textarea id="refGenInstr" placeholder="Describe the reference image&hellip;"></textarea>
   <div class="err" id="refGenErr">A description is required.</div>
 </div>
-<div class="field"><label for="refGenCount">Generations</label>
-  <input id="refGenCount" value="1" type="number" min="1" max="9">
-</div>
 <div class="modal-foot">
   <button class="btn" onclick="hideRefGenerate()">Cancel</button>
   <button class="btn btn-accent" onclick="generateRef()">Generate</button>
-</div>
-</div>
-</div>
-
-<div class="modal" id="refEditModal">
-<div class="modal-inner">
-<h3>Edit reference (image to image)</h3>
-<div class="field"><label for="refEditInstr">What should change? (required)</label>
-  <textarea id="refEditInstr" placeholder="e.g. warmer light, remove the background figure"></textarea>
-  <div class="hint">The original is kept; edits are saved as new files in the same category.</div>
-  <div class="err" id="refEditErr">Describe the edit first.</div>
-</div>
-<div class="field"><label for="refEditCount">Generations</label>
-  <input id="refEditCount" value="1" type="number" min="1" max="9">
-</div>
-<div class="modal-foot">
-  <button class="btn" onclick="hideRefEdit()">Cancel</button>
-  <button class="btn btn-accent" onclick="editRef()">Start edit</button>
 </div>
 </div>
 </div>
