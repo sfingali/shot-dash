@@ -250,7 +250,7 @@ if(r.ok){toast('Switched to '+fn);refreshData();}
 else{toast('Swap failed',true);}
 }
 async 
-function showEditPrompt(){document.getElementById('editModal').classList.add('open');document.getElementById('editInstr').focus();}
+async function showEditPrompt(){document.getElementById('editModal').classList.add('open');document.getElementById('editInstr').focus();}
 function hideEditPrompt(){document.getElementById('editModal').classList.remove('open');}
 async function editShot(){
 if(selectedIdx<0)return;
@@ -263,7 +263,7 @@ if(r.ok){var d=await r.json();toast('Edited: '+d.output_file+' (v'+d.version+')'
 else{var e=await r.json();toast(e.error||'Edit failed',true);}
 }
 
-function regenerateShot(){
+async function regenerateShot(){
 if(selectedIdx<0)return;
 var btn=document.getElementById('regenBtn');btn.disabled=true;btn.textContent='Regenerating...';
 var r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx})});
