@@ -515,21 +515,15 @@ class Handler(BaseHTTPRequestHandler):
                 data = json.loads(self.rfile.read(length))
             except json.JSONDecodeError:
                 return self._error("Invalid JSON")
-            # Global sequential renumbering: order is a list of output_files in new order
-            order = data.get("order", [])
+            scene = data.get("scene_number", "")
+            order = data.get("order", [])  # list of output_file names in new order
             rows, fieldnames = read_csv()
-            # Build a map of output_file -> new shot_number
+            # Update shot_number for all shots in this scene
             for i, fn in enumerate(order):
                 for r in rows:
                     if r.get('output_file', '').strip() == fn:
                         r['shot_number'] = str(i + 1)
                         break
-            # Also renumber any rows not in the order list (append at end)
-            max_num = len(order)
-            for r in rows:
-                if r.get('output_file', '').strip() not in order:
-                    max_num += 1
-                    r['shot_number'] = str(max_num)
             write_csv(rows, fieldnames)
             self._json({"ok": True})
 
@@ -694,38 +688,6 @@ class Handler(BaseHTTPRequestHandler):
             with open(out_path, "wb") as of:
                 of.write(img_bytes)
             self._json({"ok": True, "file": fname, "category": category, "size_kb": len(img_bytes) // 1024})
-
-        elif self.path == "/api/archive":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            row_index = data.get("row_index")
-            if row_index is None:
-                return self._error("Missing row_index")
-            rows, fieldnames = read_csv()
-            if row_index < 0 or row_index >= len(rows):
-                return self._error("Row index out of range", 400)
-            rows[row_index]["status"] = "archived"
-            write_csv(rows, fieldnames)
-            self._json({"ok": True})
-
-        elif self.path == "/api/unarchive":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            row_index = data.get("row_index")
-            if row_index is None:
-                return self._error("Missing row_index")
-            rows, fieldnames = read_csv()
-            if row_index < 0 or row_index >= len(rows):
-                return self._error("Row index out of range", 400)
-            rows[row_index]["status"] = "pending"
-            write_csv(rows, fieldnames)
-            self._json({"ok": True})
 
         elif self.path == "/api/edit_text":
             length = int(self.headers.get("Content-Length", 0))

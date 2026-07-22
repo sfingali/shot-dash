@@ -78,7 +78,6 @@ body{background:var(--bg);color:var(--text);font:13px/1.5 system-ui,sans-serif;h
   <div class="tabs">
     <button class="tab active" onclick="switchTab('shots')">Shots</button>
     <button class="tab" onclick="switchTab('refs')">References</button>
-    <button class="tab" onclick="switchTab('archive')">Archive</button>
   </div>
   <span style="margin-left:auto;font-size:12px;color:var(--text-dim)" id="stats"></span>
 </div>
@@ -105,16 +104,6 @@ body{background:var(--bg);color:var(--text);font:13px/1.5 system-ui,sans-serif;h
   </div>
   <div class="viewer-info" id="viewerInfo"></div>
 </div>
-</div>
-</div>
-
-<!-- ARCHIVE TAB -->
-<div id="tabArchive" class="content" style="display:none">
-<div class="refs-layout">
-<div class="refs-toolbar">
-  <span style="color:var(--text-dim);font-size:13px">Archived shots — click to restore</span>
-</div>
-<div class="refs-grid" id="archiveGrid" style="display:flex;flex-wrap:wrap;gap:12px;padding:12px"></div>
 </div>
 </div>
 
@@ -194,15 +183,10 @@ var sortCol='scene_number',sortDir=1;
 // ── Tabs ──
 function switchTab(t){
   activeTab=t;
-  var tabs=document.querySelectorAll('.tab');
-  tabs[0].classList.toggle('active',t==='shots');
-  tabs[1].classList.toggle('active',t==='refs');
-  tabs[2].classList.toggle('active',t==='archive');
+  document.querySelectorAll('.tab').forEach(function(b,i){b.classList.toggle('active',(i===0&&t==='shots')||(i===1&&t==='refs'));});
   document.getElementById('tabShots').style.display=t==='shots'?'flex':'none';
   document.getElementById('tabRefs').style.display=t==='refs'?'flex':'none';
-  document.getElementById('tabArchive').style.display=t==='archive'?'flex':'none';
   if(t==='refs')renderRefs();
-  if(t==='archive')renderArchive();
 }
 // ── Toast ──
 function toast(msg,isErr){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');t.classList.toggle('error',!!isErr);clearTimeout(t._to);t._to=setTimeout(function(){t.classList.remove('show');},3000);}
@@ -235,7 +219,6 @@ function renderGrid(){
   var q=(document.getElementById('search').value||'').toLowerCase();
   var sf=document.getElementById('statusFilter').value;
   var filtered=shots.filter(function(s){
-    if(s.status==='archived')return false;
     if(sf&&s.status!==sf)return false;
     if(!q)return true;
     for(var i=0;i<shotCols.length;i++){var v=s[shotCols[i]]||'';if(v.toLowerCase().indexOf(q)>=0)return true;}
@@ -245,8 +228,9 @@ function renderGrid(){
     var av=(a[sortCol]||'').toString().toLowerCase(),bv=(b[sortCol]||'').toString().toLowerCase();
     if(av<bv)return -sortDir;if(av>bv)return sortDir;return 0;
   });
-  // Global numbering — display position, not stored value
-  for(var i=0;i<filtered.length;i++){filtered[i]._gNum=i+1;}
+  // Global numbering
+  var gNum=0;
+  for(var i=0;i<filtered.length;i++){gNum++;filtered[i]._gNum=gNum;}
   // Headers
   var labels={scene_number:'Sc',shot_number:'#',generation_number:'Gen',status:'Status',characters:'Characters',location:'Location',lens:'Lens',generation_method:'Method',iteration_count:'v',estimated_cost:'$',verbatim_instructions:'Instructions',output_file:'File'};
   thead.innerHTML='<tr>'+shotCols.map(function(c){return'<th onclick="sortBy(\''+c+'\')">'+(labels[c]||c)+(sortCol===c?(sortDir>0?' ▴':' ▾'):'')+'</th>';}).join('')+'</tr>';
@@ -254,7 +238,6 @@ function renderGrid(){
     return'<tr draggable="true" ondragstart="dragStart(event,'+i+')" ondragover="dragOver(event)" ondrop="dropRow(event,'+i+')" onclick="selectShot('+i+')" class="'+(selectedIdx===i?'selected':'')+'">'+
       shotCols.map(function(c){
         var v=s[c]||'';
-        if(c==='shot_number')v=s._gNum;
         if(c==='verbatim_instructions')v=v.substring(0,60);
         if(c==='output_file')v=v+' 📷';
         return '<td>'+esc(v)+'</td>';
@@ -268,10 +251,8 @@ var dragIdx=-1;
 function dragStart(e,i){dragIdx=i;e.dataTransfer.setData('text/plain','');e.dataTransfer.effectAllowed='move';}
 function dragOver(e){e.preventDefault();}
 function dropRow(e,i){e.preventDefault();if(dragIdx<0||dragIdx===i)return;var row=shots.splice(dragIdx,1)[0];shots.splice(i,0,row);dragIdx=-1;renderGrid();saveReorder();}
-async function saveReorder(){
-  var order=shots.map(function(s){return s.output_file;});
-  await fetch('/api/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order:order})});
-}
+async function saveReorder(){var scenes={};for(var i=0;i<shots.length;i++){var s=shots[i];var sc=s.scene_number||'_';if(!scenes[sc])scenes[sc]=[];scenes[sc].push(s.output_file);}
+  await fetch('/api/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scenes:scenes})});}
 // ── Select ──
 function selectShot(i){
   selectedIdx=i;renderGrid();
@@ -444,27 +425,6 @@ async function generateRef(){
   if(r.ok){var d=await r.json();toast('Reference saved: '+d.file);fetchRefs();}
   else{var e=await r.json();toast(e.error||'Reference generation failed',true);}
 }
-// ── Archive ──
-async function archiveShot(){
-  if(selectedIdx<0)return;
-  await fetch('/api/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx})});
-  toast('Archived');selectedIdx=-1;refreshData();
-}
-function renderArchive(){
-  var archived=shots.filter(function(s){return s.status==='archived';});
-  var grid=document.getElementById('archiveGrid');
-  if(!archived.length){grid.innerHTML='<div style="color:var(--text-dim);padding:20px">No archived shots</div>';return;}
-  grid.innerHTML=archived.map(function(s){
-    var idx=shots.indexOf(s);
-    var url=s._frame_url||'';
-    var img=url?'<img src="'+url+'" style="width:160px;height:90px;object-fit:cover;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="unarchiveShot('+idx+')">':'<div style="width:160px;height:90px;border:1px solid var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">No image</div>';
-    return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div>'+img+'</div><div style="font-size:10px;color:var(--text-dim);text-align:center">'+(s.output_file||'').split('/').pop()+'</div><button onclick="unarchiveShot('+idx+')" style="font-size:11px;padding:2px 8px;background:var(--bg);color:var(--green);border:1px solid var(--border);border-radius:4px;cursor:pointer">↩ Restore</button></div>';
-  }).join('');
-}
-async function unarchiveShot(idx){
-  await fetch('/api/unarchive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:idx})});
-  toast('Restored');refreshData();renderArchive();
-}
 // ── Refresh ──
 function refreshData(){fetchShots().then(function(){if(selectedIdx>=0&&selectedIdx<shots.length){selectShot(selectedIdx);}});}
 // ── Utilities ──
@@ -486,7 +446,7 @@ fetchShots();fetchRefs();
   div.id='viewerActions';
   div.className='viewer-actions';
   div.style.display='none';
-  div.innerHTML='<button id="genBtn" class="btn-accent" onclick="generateShot()" style="display:none">⚡ Generate</button><button id="regenBtn" class="btn-accent" onclick="regenerateShot()" style="display:none">🔄 Regenerate</button><button id="editBtn" class="btn-accent" onclick="showEditPrompt()" style="display:none;background:var(--accent-dim)!important;border-color:var(--accent)!important;color:var(--accent)!important">✏️ Edit</button><select id="statusSelect" onchange="updateStatus(this.value)" style="font-size:11px;padding:4px 8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px"><option value="">Set status…</option><option>pending</option><option>curated</option><option>generated</option><option>approved</option><option>edited</option><option>selected</option><option>archived</option></select><button onclick="archiveShot()" style="font-size:11px;padding:4px 10px;background:var(--bg);color:var(--red);border:1px solid var(--border);border-radius:4px;cursor:pointer">🗑 Archive</button><button onclick="refreshData()">↻ Refresh</button>';
+  div.innerHTML='<button id="genBtn" class="btn-accent" onclick="generateShot()" style="display:none">⚡ Generate</button><button id="regenBtn" class="btn-accent" onclick="regenerateShot()" style="display:none">🔄 Regenerate</button><button id="editBtn" class="btn-accent" onclick="showEditPrompt()" style="display:none;background:var(--accent-dim)!important;border-color:var(--accent)!important;color:var(--accent)!important">✏️ Edit</button><select id="statusSelect" onchange="updateStatus(this.value)" style="font-size:11px;padding:4px 8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px"><option value="">Set status…</option><option>pending</option><option>curated</option><option>generated</option><option>approved</option><option>edited</option><option>selected</option></select><button onclick="refreshData()">↻ Refresh</button>';
   v.appendChild(div);
   // Version history strip
   var strip=document.createElement('div');
