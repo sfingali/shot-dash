@@ -846,9 +846,11 @@ class Handler(BaseHTTPRequestHandler):
                 headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'multipart/form-data; boundary=' + boundary}
             )
             try:
-                resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
+                resp = json.loads(urllib.request.urlopen(req, timeout=180).read())
             except urllib.error.HTTPError as e:
-                return self._error("GPT Image 2 edit blocked: " + e.read().decode()[:300], 400)
+                return self._error("GPT Image 2 edit failed (HTTP " + str(e.code) + "): " + e.read().decode()[:200], 400)
+            except urllib.error.URLError as e:
+                return self._error("API connection error: " + str(e.reason), 500)
             except Exception as e:
                 return self._error("API error: " + str(e), 500)
             d = resp.get("data", [{}])
@@ -947,7 +949,7 @@ class Handler(BaseHTTPRequestHandler):
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
             )
             try:
-                resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
+                resp = json.loads(urllib.request.urlopen(req, timeout=180).read())
             except urllib.error.HTTPError as e:
                 err_body = e.read().decode()[:500]
                 return self._error(f"GPT Image 2 blocked: {err_body}", 400)

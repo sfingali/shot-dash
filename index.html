@@ -256,10 +256,10 @@ async function editShot(){
 if(selectedIdx<0)return;
 var instr=document.getElementById('editInstr').value.trim();
 if(!instr){toast('Enter edit instructions',true);return;}
-var btn=document.getElementById('editBtn');btn.disabled=true;btn.textContent='Editing...';
+hideEditPrompt();document.getElementById('editInstr').value='';
+toast('Edit submitted — processing...');
 var r=await fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx,edit_instructions:instr})});
-btn.disabled=false;btn.textContent='✏️ Edit';
-if(r.ok){var d=await r.json();toast('Edited: '+d.output_file+' (v'+d.version+')');hideEditPrompt();refreshData();document.getElementById('editInstr').value='';}
+if(r.ok){var d=await r.json();toast('Edited: '+d.output_file+' (v'+d.version+')');refreshData();}
 else{var e=await r.json();toast(e.error||'Edit failed',true);}
 }
 
