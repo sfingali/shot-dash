@@ -63,6 +63,7 @@ tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.s
 <option value="">All</option><option value="pending">Pending</option><option value="curated">Curated</option><option value="generated">Generated</option><option value="approved">Approved</option><option value="edited">Edited</option>
 </select>
 <button onclick="showCreateForm()" style="background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer;font-weight:500">+ New Shot</button>
+<button onclick="toggleRefs()" style="background:var(--bg);color:var(--text-dim);border:1px solid var(--border);border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer" title="Reference images">📷 Refs</button>
 <span class="sep"></span>
 <span style="font-size:11px;color:var(--text-dim)" id="count">0 shots</span>
 </div>
@@ -95,7 +96,7 @@ tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.s
 </div>
 </div>
 </main>
-<div class="panel-refs" id="refStrip">Loading refs…</div>
+<div class="panel-refs" id="refStrip" style="display:none">Loading refs…</div>
 <div class="modal" id="modal" onclick="closeModal()">
 <button class="modal-close">&times;</button>
 <img id="modalImg" src="" alt=""><div class="modal-name" id="modalName"></div>
