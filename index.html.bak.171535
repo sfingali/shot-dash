@@ -185,7 +185,7 @@ body{background:var(--bg);color:var(--text);font:13px/1.5 system-ui,sans-serif;h
 </div>
 </div>
 
-<div class="toast" id="toast" onclick="this.classList.remove('show')"><span style="float:right;margin-left:12px;cursor:pointer;color:var(--text-dim)">&times;</span></div>
+<div class="toast" id="toast"></div>
 
 <script>
 var shots=[],refsData={},selectedIdx=-1,refsCat={},refsFlat=[],activeTab='shots',editField='',editFieldIdx=-1;
@@ -205,7 +205,7 @@ function switchTab(t){
   if(t==='archive')renderArchive();
 }
 // ── Toast ──
-function toast(msg,isErr){var t=document.getElementById('toast');t.innerHTML=msg;t.classList.add('show');t.classList.toggle('error',!!isErr);clearTimeout(t._to);if(isErr){t._to=null;}else{t._to=setTimeout(function(){t.classList.remove('show');},3000);}}
+function toast(msg,isErr){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');t.classList.toggle('error',!!isErr);clearTimeout(t._to);t._to=setTimeout(function(){t.classList.remove('show');},3000);}
 // ── Data ──
 async function fetchShots(){var r=await fetch('/api/shots');shots=(await r.json()).shots;shots.sort(function(a,b){return(parseInt(a.shot_number)||0)-(parseInt(b.shot_number)||0);});await refreshFrames();renderStats();}
 async function refreshFrames(){

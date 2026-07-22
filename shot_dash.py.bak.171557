@@ -591,6 +591,21 @@ class Handler(BaseHTTPRequestHandler):
             body = b''
             body += enc(['--' + boundary, 'Content-Disposition: form-data; name="image"; filename="source.png"', 'Content-Type: image/png', ''])
             body += source_data + b'\r\n'
+            # Mask: all-white = edit entire image (no masked-off regions)
+            # Create a 1px white PNG as mask (API scales it)
+            import struct, zlib
+            def _white_png():
+                # Minimal 1x1 white RGBA PNG
+                header = b'\x89PNG\r\n\x1a\n'
+                def chunk(typ, data):
+                    c = typ + data
+                    return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+                ihdr = struct.pack('>IIBBBBB', 1, 1, 8, 6, 0, 0, 0)
+                raw = zlib.compress(b'\x00\xff\xff\xff\xff')
+                return header + chunk(b'IHDR', ihdr) + chunk(b'IDAT', raw) + chunk(b'IEND', b'')
+            mask_data = _white_png()
+            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="mask"; filename="mask.png"', 'Content-Type: image/png', ''])
+            body += mask_data + b'\r\n'
             body += enc(['--' + boundary, 'Content-Disposition: form-data; name="prompt"', '', edit_prompt])
             body += enc(['--' + boundary, 'Content-Disposition: form-data; name="model"', '', 'gpt-image-2'])
             body += enc(['--' + boundary, 'Content-Disposition: form-data; name="size"', '', '2560x1072'])
