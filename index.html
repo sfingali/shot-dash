@@ -86,6 +86,7 @@ tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.s
 <div class="viewer-image" id="viewerImage" style="display:none"><img id="frameImg" src="" alt="" onclick="openModal()" title="Click to enlarge"></div>
 <div class="viewer-info" id="viewerInfo" style="display:none"></div>
 <div class="viewer-actions" id="viewerActions" style="display:none">
+<button id="genBtn" class="btn-approve" onclick="generateShot()" style="display:none">⚡ Generate</button>
 <select id="statusSelect" onchange="changeStatus()">
 <option value="pending">Pending</option><option value="curated">Curated</option><option value="generated">Generated</option><option value="approved">Approved</option><option value="edited">Edited</option>
 </select>
@@ -165,7 +166,8 @@ function renderGrid(){
     }).join('');
 }
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
-function selectShot(idx){selectedIdx=idx;renderGrid();if(idx<0||idx>=shots.length){showViewer(false);return;}const sh=shots[idx];showViewer(true);document.getElementById('statusSelect').value=(sh.status||'pending').toLowerCase();document.getElementById('viewerInfo').innerHTML=[`<div class="row"><span class="label">Scene</span>${sh.scene_number||'—'} / Shot ${sh.shot_number||'—'} (Gen ${sh.generation_number||'—'})</div>`,`<div class="row"><span class="label">Characters</span>${sh.characters||'—'}</div>`,`<div class="row"><span class="label">Location</span>${sh.location||'—'}</div>`,`<div class="row"><span class="label">Lens</span>${sh.lens||'—'} · ${sh.aspect_ratio||'—'} · ${sh.generation_method||'—'} · v${sh.iteration_count||'1'} · ${sh.estimated_cost||'—'}</div>`,`<div class="row"><span class="label">Endpoint</span>${sh.endpoint||'—'}</div>`,sh.fountain_text?`<div class="row"><span class="label">Fountain</span><span style="white-space:pre-wrap;font-style:italic">${esc(sh.fountain_text).substring(0,400)}</span></div>`:'',sh.curated_description?`<div class="row"><span class="label">Curated</span>${esc(sh.curated_description).substring(0,200)}</div>`:'',sh.prompt?`<div class="row"><span class="label">API Prompt</span><span style="white-space:pre-wrap">${esc(sh.prompt).substring(0,400)}</span></div>`:'',sh.iteration_history?`<div class="row"><span class="label">Iterations</span><span style="white-space:pre-wrap;font-size:10px">${esc(sh.iteration_history).substring(0,500)}</span></div>`:'',sh.output_file?`<div class="row"><span class="label">File</span>${esc(sh.output_file)}</div>`:''].join('');if(sh._frame_url){document.getElementById('frameImg').src=sh._frame_url;document.getElementById('viewerImage').style.display='flex';}else{document.getElementById('viewerImage').style.display='none';}}
+function selectShot(idx){selectedIdx=idx;renderGrid();if(idx<0||idx>=shots.length){showViewer(false);return;}const sh=shots[idx];showViewer(true);document.getElementById('statusSelect').value=(sh.status||'pending').toLowerCase();
+var genBtn=document.getElementById('genBtn');var st=(sh.status||'').toLowerCase();genBtn.style.display=(st==='pending'||st==='curated')?'inline-block':'none';document.getElementById('viewerInfo').innerHTML=[`<div class="row"><span class="label">Scene</span>${sh.scene_number||'—'} / Shot ${sh.shot_number||'—'} (Gen ${sh.generation_number||'—'})</div>`,`<div class="row"><span class="label">Characters</span>${sh.characters||'—'}</div>`,`<div class="row"><span class="label">Location</span>${sh.location||'—'}</div>`,`<div class="row"><span class="label">Lens</span>${sh.lens||'—'} · ${sh.aspect_ratio||'—'} · ${sh.generation_method||'—'} · v${sh.iteration_count||'1'} · ${sh.estimated_cost||'—'}</div>`,`<div class="row"><span class="label">Endpoint</span>${sh.endpoint||'—'}</div>`,sh.fountain_text?`<div class="row"><span class="label">Fountain</span><span style="white-space:pre-wrap;font-style:italic">${esc(sh.fountain_text).substring(0,400)}</span></div>`:'',sh.curated_description?`<div class="row"><span class="label">Curated</span>${esc(sh.curated_description).substring(0,200)}</div>`:'',sh.prompt?`<div class="row"><span class="label">API Prompt</span><span style="white-space:pre-wrap">${esc(sh.prompt).substring(0,400)}</span></div>`:'',sh.iteration_history?`<div class="row"><span class="label">Iterations</span><span style="white-space:pre-wrap;font-size:10px">${esc(sh.iteration_history).substring(0,500)}</span></div>`:'',sh.output_file?`<div class="row"><span class="label">File</span>${esc(sh.output_file)}</div>`:''].join('');if(sh._frame_url){document.getElementById('frameImg').src=sh._frame_url;document.getElementById('viewerImage').style.display='flex';}else{document.getElementById('viewerImage').style.display='none';}}
 function showViewer(s){document.getElementById('viewerEmpty').style.display=s?'none':'flex';document.getElementById('viewerInfo').style.display=s?'block':'none';document.getElementById('viewerActions').style.display=s?'flex':'none';if(!s)document.getElementById('viewerImage').style.display='none';}
 function changeStatus(){if(selectedIdx<0)return;updateStatus(selectedIdx,document.getElementById('statusSelect').value);}
 function approveShot(){if(selectedIdx<0)return;updateStatus(selectedIdx,'approved');document.getElementById('statusSelect').value='approved';}
@@ -193,6 +195,21 @@ document.getElementById('newFile').style.color='var(--text-dim)';
 }
 // Esc to close create modal
 document.addEventListener('keydown',e=>{if(e.key==='Escape')hideCreateForm();});
+async function generateShot(){
+if(selectedIdx<0)return;
+var btn=document.getElementById('genBtn');btn.disabled=true;btn.textContent='Generating...';
+var r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx})});
+btn.disabled=false;btn.textContent='⚡ Generate';
+if(r.ok){
+var data=await r.json();
+toast('Generated: '+data.output_file+' ('+data.size_kb+' KB)');
+refreshData();
+}else{
+var err=await r.json();
+toast(err.error||'Generation failed',true);
+}
+}
+
 function refreshData(){fetchShots().then(()=>{if(selectedIdx>=0)selectShot(selectedIdx);});}
 function openModal(){const s=shots[selectedIdx];if(!s||!s._frame_url)return;document.getElementById('modalImg').src=s._frame_url;document.getElementById('modalName').textContent=s.output_file||'';document.getElementById('modal').classList.add('open');}
 function openRefModal(p){document.getElementById('modalImg').src='/api/ref/'+encodeURIComponent(p);document.getElementById('modalName').textContent=p;document.getElementById('modal').classList.add('open');}

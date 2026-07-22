@@ -207,6 +207,85 @@ class Handler(BaseHTTPRequestHandler):
             write_csv(rows, fieldnames)
             self._json({"ok": True})
 
+        elif self.path == "/api/generate":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except json.JSONDecodeError:
+                return self._error("Invalid JSON")
+            row_index = data.get("row_index")
+            if row_index is None:
+                return self._error("Missing row_index")
+            rows, fieldnames = read_csv()
+            if row_index < 0 or row_index >= len(rows):
+                return self._error("Row index out of range", 400)
+            shot = rows[row_index]
+            # Build prompt: curated_description > verbatim_instructions
+            base = (shot.get("curated_description") or shot.get("verbatim_instructions") or "").strip()
+            if not base:
+                return self._error("Shot has no description to generate from", 400)
+            prompt = base + " Photorealistic cinematic still from an indie horror film. No text, no watermark."
+            # Load API key
+            key = None
+            env_path = os.path.expanduser("/opt/data/profiles/heavy/.env")
+            if os.path.exists(env_path):
+                with open(env_path) as ef:
+                    for line in ef:
+                        if "OPENAI_KEY" in line or "VOICE_TOOLS_OPENAI_KEY" in line:
+                            key = line.strip().split("=", 1)[1].strip().strip("'").strip('"')
+                            break
+            if not key:
+                return self._error("OpenAI API key not found", 500)
+            # Call GPT Image 2
+            import urllib.request, base64
+            body = json.dumps({
+                "model": "gpt-image-2",
+                "prompt": prompt,
+                "n": 1,
+                "size": "2560x1072",
+                "quality": "medium"
+            }).encode()
+            req = urllib.request.Request(
+                "https://api.openai.com/v1/images/generations",
+                data=body,
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            )
+            try:
+                resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode()[:500]
+                return self._error(f"GPT Image 2 blocked: {err_body}", 400)
+            except Exception as e:
+                return self._error(f"API error: {str(e)}", 500)
+            d = resp.get("data", [{}])
+            if not d:
+                return self._error("No image data in response", 500)
+            if "b64_json" in d[0]:
+                img_bytes = base64.b64decode(d[0]["b64_json"])
+            else:
+                img_bytes = urllib.request.urlopen(d[0]["url"]).read()
+            # Save image
+            output_file = shot.get("output_file", "").strip()
+            if not output_file:
+                sc = shot.get("scene_number", "XX")
+                sn = shot.get("shot_number", "1")
+                output_file = f"waif_sc_{sc}_v{sn}.png"
+            out_path = os.path.join(FRAMES_DIR, output_file)
+            with open(out_path, "wb") as of:
+                of.write(img_bytes)
+            # Update CSV
+            shot["status"] = "generated"
+            shot["output_file"] = output_file
+            shot["prompt"] = prompt
+            shot["aspect_ratio"] = shot.get("aspect_ratio") or "2.39:1"
+            shot["quality"] = shot.get("quality") or "medium"
+            shot["generation_method"] = shot.get("generation_method") or "generation"
+            shot["estimated_cost"] = shot.get("estimated_cost") or "$0.04"
+            if not shot.get("lens"):
+                shot["lens"] = "28mm"
+            write_csv(rows, fieldnames)
+            self._json({"ok": True, "output_file": output_file, "size_kb": len(img_bytes) // 1024})
+
         elif self.path == "/api/create":
             length = int(self.headers.get("Content-Length", 0))
             try:
