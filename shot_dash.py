@@ -317,9 +317,12 @@ def parse_args():
 
 # ── CSV ───────────────────────────────────────────────────────────────────
 CSV_COLUMNS = [
-    "scene_number", "shot_number", "verbatim_instructions",
+    "scene_number", "shot_number", "generation_number", "verbatim_instructions",
     "lens", "aspect_ratio", "quality", "curated_description",
-    "prompt", "output_file", "status", "version_history"
+    "fountain_description", "fountain_text", "iteration_history",
+    "characters", "location", "generation_method", "iteration_count",
+    "source_frame", "estimated_cost", "prompt", "output_file", "status",
+    "endpoint", "version_history"
 ]
 
 def read_csv():
@@ -328,7 +331,21 @@ def read_csv():
     with open(CSV_PATH, "r", newline="") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
-        fieldnames = reader.fieldnames or CSV_COLUMNS
+        fieldnames = list(reader.fieldnames) if reader.fieldnames else CSV_COLUMNS
+    # Auto-migrate: add any columns from CSV_COLUMNS not yet in the file
+    missing = [c for c in CSV_COLUMNS if c not in fieldnames]
+    if missing:
+        for c in missing:
+            fieldnames.append(c)
+            for r in rows:
+                r[c] = ""
+        # Write migrated version back
+        tmp = CSV_PATH + ".tmp"
+        with open(tmp, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
+            writer.writeheader()
+            writer.writerows(rows)
+        os.replace(tmp, CSV_PATH)
     return rows, fieldnames
 
 def write_csv(rows, fieldnames):
