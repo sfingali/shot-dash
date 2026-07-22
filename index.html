@@ -99,7 +99,7 @@ tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.s
 <button class="modal-close">&times;</button>
 <img id="modalImg" src="" alt=""><div class="modal-name" id="modalName"></div>
 
-<div class="modal" id="createModal" onclick="event.target===this&&hideCreateForm()">
+<div class="modal" id="createModal" style="z-index:200" onclick="event.target===this&&hideCreateForm()">
 <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;width:420px;max-height:80vh;overflow-y:auto" onclick="event.stopPropagation()">
 <h3 style="color:var(--accent);margin:0 0 16px">New Shot</h3>
 <div style="display:flex;flex-direction:column;gap:10px">
@@ -186,11 +186,66 @@ function openRefModal(p){document.getElementById('modalImg').src='/api/ref/'+enc
 function closeModal(){document.getElementById('modal').classList.remove('open');}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();if(e.key==='ArrowDown'){e.preventDefault();selectShot(Math.min(selectedIdx+1,shots.length-1));}if(e.key==='ArrowUp'){e.preventDefault();selectShot(Math.max(selectedIdx-1,0));}if(e.key==='a'&&!e.ctrlKey&&!e.metaKey&&selectedIdx>=0)approveShot();});
 // ── Drag and Drop ──
-let dragSrcIdx=-1;
-function dragStart(e){const tr=e.target.closest('tr');if(!tr)return;dragSrcIdx=parseInt(tr.dataset.idx);e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',tr.dataset.idx);tr.classList.add('dragging');}
-function dragOver(e){e.preventDefault();e.dataTransfer.dropEffect='move';const tr=e.target.closest('tr');if(!tr)return;const ts=tr.dataset.scene,ss=shots[dragSrcIdx],sns=ss?(ss.scene_number||'—'):'';if(ts===sns||ts==='—'||sns==='—')tr.classList.add('drag-over');}
-function dragLeave(e){e.target.closest('tr')?.classList.remove('drag-over');}
-async function dropRow(e){e.preventDefault();const tr=e.target.closest('tr');if(!tr)return;tr.classList.remove('drag-over');const ti=parseInt(tr.dataset.idx),ts=tr.dataset.scene,ss=shots[dragSrcIdx],sns=ss?(ss.scene_number||'—'):'';if(ts!==sns&&ts!=='—'&&sns!=='—'){toast('Drop within same scene only',true);return;}if(dragSrcIdx<0||dragSrcIdx===ti)return;const scs=shots.map((s,i)=>({...s,_idx:i})).filter(s=>(s.scene_number||'—')===sns).sort((a,b)=>(parseFloat(a.shot_number)||0)-(parseFloat(b.shot_number)||0));const si=scs.find(s=>s._idx===dragSrcIdx),ti2=scs.find(s=>s._idx===ti);if(!si||!ti2)return;const sp=scs.indexOf(si),tp=scs.indexOf(ti2);scs.splice(sp,1);scs.splice(tp,0,si);const no=scs.map(s=>shots[s._idx].output_file);const r=await fetch('/api/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_number:sns==='—'?'':sns,order:no})});if(r.ok){toast('Reordered');refreshData();}else{toast('Reorder failed',true);}}
+// ── Drag and Drop ──
+let dragSrcIdx = -1;
+function dragStart(e) {
+    var tr = e.target.closest('tr');
+    if (!tr) return;
+    dragSrcIdx = parseInt(tr.dataset.idx);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', tr.dataset.idx);
+    tr.classList.add('dragging');
+}
+function dragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    var tr = e.target.closest('tr');
+    if (!tr) return;
+    var ts = tr.dataset.scene;
+    var ss = shots[dragSrcIdx];
+    var sns = ss ? (ss.scene_number || '—') : '';
+    if (ts === sns || ts === '—' || sns === '—') {
+        tr.classList.add('drag-over');
+    }
+}
+function dragLeave(e) {
+    var tr = e.target.closest('tr');
+    if (tr) tr.classList.remove('drag-over');
+}
+async function dropRow(e) {
+    e.preventDefault();
+    var tr = e.target.closest('tr');
+    if (!tr) return;
+    tr.classList.remove('drag-over');
+    var ti = parseInt(tr.dataset.idx);
+    var ts = tr.dataset.scene;
+    var ss = shots[dragSrcIdx];
+    var sns = ss ? (ss.scene_number || '—') : '';
+    if (ts !== sns && ts !== '—' && sns !== '—') {
+        toast('Drop within same scene only', true);
+        return;
+    }
+    if (dragSrcIdx < 0 || dragSrcIdx === ti) return;
+    var scs = shots.map(function(s, i) { return Object.assign({}, s, {_idx: i}); })
+        .filter(function(s) { return (s.scene_number || '—') === sns; })
+        .sort(function(a, b) { return (parseFloat(a.shot_number) || 0) - (parseFloat(b.shot_number) || 0); });
+    var si = scs.find(function(s) { return s._idx === dragSrcIdx; });
+    var ti2 = scs.find(function(s) { return s._idx === ti; });
+    if (!si || !ti2) return;
+    var sp = scs.indexOf(si);
+    var tp = scs.indexOf(ti2);
+    scs.splice(sp, 1);
+    scs.splice(tp, 0, si);
+    var no = scs.map(function(s) { return shots[s._idx].output_file; });
+    var r = await fetch('/api/reorder', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({scene_number: (sns === '—' ? '' : sns), order: no})
+    });
+    if (r.ok) { toast('Reordered'); refreshData(); }
+    else { toast('Reorder failed', true); }
+}
+
 fetchShots();fetchRefs();
 </script>
 </body>
