@@ -277,6 +277,11 @@ async function dropRow(e) {
     else { toast('Reorder failed', true); }
 }
 
+function toggleRefs(){
+var s=document.getElementById('refStrip');
+if(s.style.display==='none'){s.style.display='block';fetchRefs();}
+else{s.style.display='none';}
+}
 fetchShots();fetchRefs();
 </script>
 </body>
