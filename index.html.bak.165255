@@ -251,8 +251,7 @@ function renderGrid(){
   var labels={scene_number:'Sc',shot_number:'#',generation_number:'Gen',status:'Status',characters:'Characters',location:'Location',lens:'Lens',generation_method:'Method',iteration_count:'v',estimated_cost:'$',verbatim_instructions:'Instructions',output_file:'File'};
   thead.innerHTML='<tr>'+shotCols.map(function(c){return'<th onclick="sortBy(\''+c+'\')">'+(labels[c]||c)+(sortCol===c?(sortDir>0?' ▴':' ▾'):'')+'</th>';}).join('')+'</tr>';
   grid.innerHTML=filtered.map(function(s,i){
-    var realIdx=shots.indexOf(s);
-    return'<tr draggable="true" ondragstart="dragStart(event,'+realIdx+')" ondragover="dragOver(event)" ondrop="dropRow(event,'+realIdx+')" onclick="selectShot('+realIdx+')" class="'+(selectedIdx===realIdx?'selected':'')+'">'+
+    return'<tr draggable="true" ondragstart="dragStart(event,'+i+')" ondragover="dragOver(event)" ondrop="dropRow(event,'+i+')" onclick="selectShot('+i+')" class="'+(selectedIdx===i?'selected':'')+'">'+
       shotCols.map(function(c){
         var v=s[c]||'';
         if(c==='shot_number')v=s._gNum;
@@ -268,7 +267,7 @@ function sortBy(c){if(sortCol===c)sortDir=-sortDir;else{sortCol=c;sortDir=1;}ren
 var dragIdx=-1;
 function dragStart(e,i){dragIdx=i;e.dataTransfer.setData('text/plain','');e.dataTransfer.effectAllowed='move';}
 function dragOver(e){e.preventDefault();}
-function dropRow(e,realIdx){e.preventDefault();if(dragIdx<0||dragIdx===realIdx)return;var row=shots.splice(dragIdx,1)[0];shots.splice(realIdx,0,row);dragIdx=-1;renderGrid();saveReorder();}
+function dropRow(e,i){e.preventDefault();if(dragIdx<0||dragIdx===i)return;var row=shots.splice(dragIdx,1)[0];shots.splice(i,0,row);dragIdx=-1;renderGrid();saveReorder();}
 async function saveReorder(){
   var order=shots.map(function(s){return s.output_file;});
   await fetch('/api/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order:order})});
@@ -457,7 +456,7 @@ function renderArchive(){
   if(!archived.length){grid.innerHTML='<div style="color:var(--text-dim);padding:20px">No archived shots</div>';return;}
   grid.innerHTML=archived.map(function(s){
     var idx=shots.indexOf(s);
-    var url=s._frame_url||'/api/frame/'+encodeURIComponent(s.output_file||'');
+    var url=s._frame_url||'';
     var img=url?'<img src="'+url+'" style="width:160px;height:90px;object-fit:cover;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="unarchiveShot('+idx+')">':'<div style="width:160px;height:90px;border:1px solid var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">No image</div>';
     return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div>'+img+'</div><div style="font-size:10px;color:var(--text-dim);text-align:center">'+(s.output_file||'').split('/').pop()+'</div><button onclick="unarchiveShot('+idx+')" style="font-size:11px;padding:2px 8px;background:var(--bg);color:var(--green);border:1px solid var(--border);border-radius:4px;cursor:pointer">↩ Restore</button></div>';
   }).join('');
