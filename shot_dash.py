@@ -528,14 +528,26 @@ class Handler(BaseHTTPRequestHandler):
             if row_index < 0 or row_index >= len(rows):
                 return self._error("Row index out of range", 400)
             shot = rows[row_index]
-            # Build prompt: use existing prompt if available (regeneration), else build from description
+            # Build prompt: use existing if regenerating, else build cinematic prompt
             if shot.get("prompt"):
                 prompt = shot["prompt"]
             else:
                 base = (shot.get("curated_description") or shot.get("verbatim_instructions") or "").strip()
                 if not base:
                     return self._error("Shot has no description to generate from", 400)
-                prompt = base + " Photorealistic cinematic still from an indie horror film. No text, no watermark."
+                # Build full cinematic prompt like the storyboarding pipeline
+                lens = shot.get("lens", "").strip()
+                loc = shot.get("location", "").strip()
+                ratio = shot.get("aspect_ratio", "2.39:1").strip()
+                parts = [base]
+                if lens:
+                    parts.append(f"Shot with {lens} lens")
+                if loc:
+                    parts.append(f"{loc}")
+                parts.append("Desaturated palette, cool shadows")
+                parts.append("Photorealistic cinematic still from an indie horror film")
+                parts.append("Scope {}. No text, no watermark, no logos.".format(ratio))
+                prompt = ". ".join(parts)
             # Load API key
             key = None
             env_path = os.path.expanduser("/opt/data/profiles/heavy/.env")
