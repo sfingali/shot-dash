@@ -343,7 +343,7 @@ var s=document.getElementById('refStrip');
 if(s.style.display==='none'){s.style.display='block';fetchRefs();}
 else{s.style.display='none';}
 }
-fetchShots();fetchRefs();
+fetchShots();fetchRefs();setTimeout(function(){if(shots.length===0)fetchShots();},800);
 </script>
 </body>
 </html>
