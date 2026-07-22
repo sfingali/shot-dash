@@ -230,10 +230,6 @@ function renderStats(){
   document.getElementById('stats').innerHTML='Shots: <span style="color:var(--green)">'+c('generated')+' gen</span> <span style="color:var(--accent)">'+c('approved')+' app</span> <span style="color:var(--red)">'+c('pending')+' pend</span> <span style="color:var(--text-dim)">'+c('edited')+' ed</span>';
 }
 // ── Grid ──
-document.getElementById('grid').addEventListener('click',function(e){
-  var tr=e.target.closest('tr[data-file]');
-  if(tr){var fn=tr.getAttribute('data-file');clickShot(fn);}
-});
 var shotCols=['scene_number','shot_number','generation_number','status','characters','location','lens','generation_method','iteration_count','estimated_cost','verbatim_instructions','output_file'];
 function renderGrid(){
   var q=(document.getElementById('search').value||'').toLowerCase();
@@ -256,8 +252,8 @@ function renderGrid(){
   thead.innerHTML='<tr>'+shotCols.map(function(c){return'<th onclick="sortBy(\''+c+'\')">'+(labels[c]||c)+(sortCol===c?(sortDir>0?' ▴':' ▾'):'')+'</th>';}).join('')+'</tr>';
   grid.innerHTML=filtered.map(function(s,i){
     var realIdx=shots.indexOf(s);
-    var fn=s.output_file||'';
-    return'<tr style="cursor:pointer" draggable="true" ondragstart="dragStart(event,'+realIdx+')" ondragover="dragOver(event)" ondrop="dropRow(event,'+realIdx+')" data-file="'+fn+'" class="'+(selectedIdx===realIdx?'selected':'')+'">'+
+    var fn=JSON.stringify(s.output_file||'');
+    return'<tr draggable="true" ondragstart="dragStart(event,'+realIdx+')" ondragover="dragOver(event)" ondrop="dropRow(event,'+realIdx+')" onclick="clickShot('+fn+')" class="'+(selectedIdx===realIdx?'selected':'')+'">'+
       shotCols.map(function(c){
         var v=s[c]||'';
         if(c==='shot_number')v=s._gNum;
