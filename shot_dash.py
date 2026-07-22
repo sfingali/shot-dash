@@ -1,46 +1,212 @@
 #!/usr/bin/env python3
-"""Shot Dash — local storyboard review dashboard for film production.
-Serves a CSV shot list as a filterable grid, inline frame previews,
-and a reference image browser. Zero dependencies beyond Python stdlib.
+"""Shot Dash — local storyboard review dashboard for THE WAIF.
+
+Serves a CSV shot list as a filterable grid, inline frame previews, and a
+reference image browser. Zero dependencies beyond the Python stdlib.
 
 Usage:
-    python shot_dash.py [--port 8090] [--frames-dir /path] [--refs-dir /path] [--csv /path]
+    python3 shot_dash.py [--port 8090] [--frames-dir /path] [--refs-dir /path]
+                         [--csv /path] [--env /path/to/.env]
+
+Reliability notes (v2):
+  * ThreadingHTTPServer — long image-generation calls (60-180s) no longer
+    block every other request. This was the main reason the old server
+    appeared to "die": one generate call froze the whole UI and any
+    keepalive probe for up to 3 minutes.
+  * Every POST handler runs inside a catch-all; unhandled exceptions return
+    a JSON 500 instead of killing the worker.
+  * CSV read-modify-write cycles are serialized with a lock so concurrent
+    requests can't corrupt the file.
+  * /api/health endpoint for the keepalive cron. For real persistence, run
+    under systemd:
+
+        [Unit]
+        Description=Shot Dash
+        After=network.target
+        [Service]
+        ExecStart=/usr/bin/python3 /path/to/shot_dash.py
+        Restart=always
+        RestartSec=3
+        [Install]
+        WantedBy=default.target
 """
 
+import base64
 import csv
 import json
 import os
+import re
 import sys
+import threading
+import time
+import urllib.error
 import urllib.parse
-from http.server import HTTPServer, BaseHTTPRequestHandler
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+# -- Config ----------------------------------------------------------------
 PORT = 8090
 CSV_PATH = "/opt/data/home/projects/the-waif/storyboard_shots.csv"
 FRAMES_DIR = "/opt/data/home/projects/the-waif/storyboards_gpt"
+REFS_DIR = "/opt/data/home/projects/the-waif/storyboard_reference"
+ENV_PATH = "/opt/data/profiles/heavy/.env"
+
+ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+HOUSE_STYLE = ("Desaturated palette, cool shadows. Photorealistic cinematic "
+               "still from an indie horror film. Scope 2.39:1. No text, no "
+               "watermark, no logos.")
+
+EDIT_SUFFIX = (". Keep everything else the same: composition, lighting, "
+               "palette, mood. Photorealistic cinematic still from an indie "
+               "horror film. No text, no watermark, no logos.")
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+HTML_PATH = os.path.join(SCRIPT_DIR, "index.html")
+
+CSV_LOCK = threading.Lock()
+
+
+def parse_args():
+    global PORT, CSV_PATH, FRAMES_DIR, REFS_DIR, ENV_PATH
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        flag = args[i]
+        has_val = i + 1 < len(args)
+        if flag == "--port" and has_val:
+            i += 1; PORT = int(args[i])
+        elif flag == "--csv" and has_val:
+            i += 1; CSV_PATH = args[i]
+        elif flag == "--frames-dir" and has_val:
+            i += 1; FRAMES_DIR = args[i]
+        elif flag == "--refs-dir" and has_val:
+            i += 1; REFS_DIR = args[i]
+        elif flag == "--env" and has_val:
+            i += 1; ENV_PATH = args[i]
+        i += 1
+
+
+# -- Errors ----------------------------------------------------------------
+class ApiError(Exception):
+    """Raise anywhere in a handler to return a JSON error with a status."""
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
+
+
+# -- CSV layer -------------------------------------------------------------
+CSV_COLUMNS = [
+    "scene_number", "shot_number", "generation_number", "verbatim_instructions",
+    "lens", "aspect_ratio", "quality", "curated_description",
+    "fountain_description", "fountain_text", "iteration_history",
+    "characters", "location", "generation_method", "iteration_count",
+    "source_frame", "estimated_cost", "prompt", "output_file", "status",
+    "endpoint", "version_history",
+]
+
+
+def read_csv():
+    """Read rows + fieldnames. Missing columns are added in memory only and
+    persisted on the next write (the old version rewrote the CSV on every
+    GET when migrating, which is wasteful and racy)."""
+    if not os.path.exists(CSV_PATH):
+        return [], list(CSV_COLUMNS)
+    with open(CSV_PATH, "r", newline="") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+        fieldnames = list(reader.fieldnames) if reader.fieldnames else list(CSV_COLUMNS)
+    for c in CSV_COLUMNS:
+        if c not in fieldnames:
+            fieldnames.append(c)
+    for r in rows:
+        r.pop(None, None)  # DictReader stores overflow cells under None
+        for c in fieldnames:
+            if r.get(c) is None:
+                r[c] = ""
+    return rows, fieldnames
+
+
+def write_csv(rows, fieldnames):
+    """Atomic write with timestamped backup. Prunes backups older than 7
+    days, keeps at most 50."""
+    csv_dir = os.path.dirname(os.path.abspath(CSV_PATH))
+    backup_dir = os.path.join(csv_dir, ".csv_backups")
+    try:
+        os.makedirs(backup_dir, exist_ok=True)
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        backup_path = os.path.join(backup_dir, "storyboard_shots.%s.csv" % ts)
+        with open(backup_path, "w", newline="") as bf:
+            bw = csv.DictWriter(bf, fieldnames=fieldnames, extrasaction="ignore")
+            bw.writeheader()
+            bw.writerows(rows)
+        now = time.time()
+        for b in sorted(os.listdir(backup_dir)):
+            fp = os.path.join(backup_dir, b)
+            if now - os.path.getmtime(fp) > 7 * 86400:
+                os.remove(fp)
+        backups = sorted(os.listdir(backup_dir))
+        if len(backups) > 50:
+            for old in backups[:-50]:
+                os.remove(os.path.join(backup_dir, old))
+    except OSError:
+        pass  # a backup failure must never block the main write
+
+    tmp = CSV_PATH + ".tmp"
+    with open(tmp, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    os.replace(tmp, CSV_PATH)
+
 
 def find_row_by_file(rows, output_file):
     """Return (row_index, row) or (None, None)."""
+    target = (output_file or "").strip()
     for i, r in enumerate(rows):
-        if r.get("output_file", "").strip() == output_file.strip():
+        if (r.get("output_file") or "").strip() == target:
             return i, r
     return None, None
-REFS_DIR = "/opt/data/home/projects/the-waif/storyboard_reference"
-ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
-# Fountain scene → location + character lookup (from THE WAIF numbered draft)
+
+def resolve_row(rows, data):
+    """Locate a shot by output_file (preferred — stable across client-side
+    sorting) or row_index (CSV order). Raises ApiError if not found."""
+    output_file = (data.get("output_file") or "").strip()
+    if output_file:
+        idx, row = find_row_by_file(rows, output_file)
+        if idx is None:
+            raise ApiError("Shot not found: " + output_file, 404)
+        return idx, row
+    idx = data.get("row_index")
+    if idx is None:
+        raise ApiError("Missing output_file or row_index")
+    if not isinstance(idx, int) or idx < 0 or idx >= len(rows):
+        raise ApiError("Row index out of range")
+    return idx, rows[idx]
+
+
+# -- Scene data ------------------------------------------------------------
 SCENE_TEXT = {}
+
+
 def _load_scene_text():
     global SCENE_TEXT
+    sp = os.path.join(SCRIPT_DIR, "scene_text.json")
     try:
-        import json
-        sp = os.path.join(os.path.dirname(__file__), "scene_text.json")
         if os.path.exists(sp):
             with open(sp) as sf:
                 SCENE_TEXT = json.load(sf)
-    except Exception:
-        pass
-_load_scene_text()
+    except (OSError, json.JSONDecodeError) as e:
+        print("Warning: could not load scene_text.json: %s" % e)
+
+
+# Fountain scene -> location lookup (from THE WAIF numbered draft).
+# NOTE: intentionally sparse — scenes 79, 81, 83, 86, 88, 90 and 231 have no
+# slug of their own in the draft, and nothing exists past 278. Unknown
+# scenes fall back to keyword inference from the shot instructions
+# (see infer_location).
 SCENE_LOOKUP = {
     "1": {"location": 'INT. MASTER BEDROOM - HOUSE - NIGHT'},
     "2": {"location": 'INT. CORRIDOR - HOUSE - NIGHT'},
@@ -315,130 +481,300 @@ SCENE_LOOKUP = {
     "278": {"location": 'EXT. INTERSECTION - DAY'},
 }
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-HTML_PATH = os.path.join(SCRIPT_DIR, "index.html")
-
-# ── CLI ───────────────────────────────────────────────────────────────────
-def parse_args():
-    global PORT, CSV_PATH, FRAMES_DIR, REFS_DIR
-    args = sys.argv[1:]
-    i = 0
-    while i < len(args):
-        if args[i] == "--port" and i + 1 < len(args):
-            i += 1; PORT = int(args[i])
-        elif args[i] == "--csv" and i + 1 < len(args):
-            i += 1; CSV_PATH = args[i]
-        elif args[i] == "--frames-dir" and i + 1 < len(args):
-            i += 1; FRAMES_DIR = args[i]
-        elif args[i] == "--refs-dir" and i + 1 < len(args):
-            i += 1; REFS_DIR = args[i]
-        i += 1
-
-# ── CSV ───────────────────────────────────────────────────────────────────
-CSV_COLUMNS = [
-    "scene_number", "shot_number", "generation_number", "verbatim_instructions",
-    "lens", "aspect_ratio", "quality", "curated_description",
-    "fountain_description", "fountain_text", "iteration_history",
-    "characters", "location", "generation_method", "iteration_count",
-    "source_frame", "estimated_cost", "prompt", "output_file", "status",
-    "endpoint", "version_history"
+# Keyword -> character mapping. JRM aliases are checked before plain "ben"
+# so "Jonathan" / "JRM" shots don't tag both variants.
+CHAR_KEYWORDS = [
+    ("jrm", "Ben (JRM)"), ("jonathan", "Ben (JRM)"), ("ben", "Ben"),
+    ("marie", "Marie"), ("waif", "Waif"), ("jack", "Jack"),
+    ("neighbor", "Neighbor"), ("mother", "The Mother"), ("lawyer", "Lawyer"),
+    ("jamie", "Jamie"), ("ricky", "Ricky"),
+    ("schr\u00f6dinger", "Schr\u00f6dinger"), ("schrodinger", "Schr\u00f6dinger"),
 ]
 
-def read_csv():
-    if not os.path.exists(CSV_PATH):
-        return [], CSV_COLUMNS
-    with open(CSV_PATH, "r", newline="") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-        fieldnames = list(reader.fieldnames) if reader.fieldnames else CSV_COLUMNS
-    # Auto-migrate: add any columns from CSV_COLUMNS not yet in the file
-    missing = [c for c in CSV_COLUMNS if c not in fieldnames]
-    if missing:
-        for c in missing:
-            fieldnames.append(c)
-            for r in rows:
-                r[c] = ""
-        # Write migrated version back
-        tmp = CSV_PATH + ".tmp"
-        with open(tmp, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
-            writer.writeheader()
-            writer.writerows(rows)
-        os.replace(tmp, CSV_PATH)
-    return rows, fieldnames
+LOC_KEYWORDS = [
+    ("broken bow", "Broken Bow"), ("cabin", "Cabin - Broken Bow"),
+    ("court", "Municipal Courthouse"), ("motel", "Motel"),
+    ("pickup", "Pickup Truck"), ("suburban", "Suburban House"),
+    ("intersection", "The Intersection"),
+]
 
-def write_csv(rows, fieldnames):
-    # Auto-backup before every write
-    backup_dir = os.path.join(os.path.dirname(os.path.abspath(CSV_PATH)), ".csv_backups")
-    os.makedirs(backup_dir, exist_ok=True)
-    import time
-    ts = time.strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(backup_dir, f"storyboard_shots.{ts}.csv")
-    with open(backup_path, "w", newline="") as bf:
-        bw = csv.DictWriter(bf, fieldnames=fieldnames)
-        bw.writeheader()
-        bw.writerows(rows)
-    # Prune backups older than 7 days, keep max 50
-    backups = sorted(os.listdir(backup_dir))
-    if len(backups) > 50:
-        for old in backups[:-50]:
-            os.remove(os.path.join(backup_dir, old))
-    # Write main file
-    tmp = CSV_PATH + ".tmp"
-    with open(tmp, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-    os.replace(tmp, CSV_PATH)
 
-def update_shot_field(row_index, field, value):
-    rows, fieldnames = read_csv()
-    if row_index < 0 or row_index >= len(rows):
-        return False
-    rows[row_index][field] = value
-    write_csv(rows, fieldnames)
-    return True
+def detect_characters(instructions):
+    text = (instructions or "").lower()
+    chars = []
+    for kw, name in CHAR_KEYWORDS:
+        if kw in text and name not in chars:
+            if kw == "ben" and "Ben (JRM)" in chars:
+                continue
+            chars.append(name)
+    return ", ".join(chars)
 
-# ── Images ────────────────────────────────────────────────────────────────
+
+def infer_location(scene_number, instructions):
+    if scene_number in SCENE_LOOKUP:
+        return SCENE_LOOKUP[scene_number]["location"]
+    text = (instructions or "").lower()
+    for kw, loc in LOC_KEYWORDS:
+        if kw in text:
+            return loc
+    return ""
+
+
+def autofill_shot(shot):
+    """Fill fountain_text / location / characters when blank."""
+    sc = (shot.get("scene_number") or "").strip()
+    instr = shot.get("verbatim_instructions") or ""
+    if sc in SCENE_TEXT and not shot.get("fountain_text"):
+        shot["fountain_text"] = SCENE_TEXT[sc]
+    if not shot.get("location"):
+        loc = infer_location(sc, instr)
+        if loc:
+            shot["location"] = loc
+    if not shot.get("characters"):
+        chars = detect_characters(instr)
+        if chars:
+            shot["characters"] = chars
+
+
+# -- Images ----------------------------------------------------------------
 def list_images(directory):
+    """Relative POSIX-style paths of all images under directory."""
     images = []
     base = Path(directory)
     if not base.exists():
         return images
     for p in sorted(base.rglob("*")):
         if p.is_file() and p.suffix.lower() in ALLOWED_IMAGE_EXTS:
-            images.append(str(p.relative_to(base)))
+            images.append(p.relative_to(base).as_posix())
     return images
+
+
+def refs_by_category():
+    """Group reference images by their first path segment. Files sitting
+    directly in REFS_DIR go under 'uncategorized'."""
+    cats = {}
+    for rel in list_images(REFS_DIR):
+        parts = rel.split("/", 1)
+        cat = parts[0] if len(parts) > 1 else "uncategorized"
+        cats.setdefault(cat, []).append(rel)
+    return cats
+
 
 def find_in_tree(base_dir, filename):
     """Search recursively for a file by basename in base_dir."""
-    name_lower = filename.lower()
+    name_lower = (filename or "").lower()
+    if not name_lower or not os.path.isdir(base_dir):
+        return None
     for p in Path(base_dir).rglob("*"):
         if p.is_file() and p.name.lower() == name_lower:
             return str(p)
-    # Fallback: substring match
     for p in Path(base_dir).rglob("*"):
         if p.is_file() and name_lower in p.name.lower():
             return str(p)
     return None
 
-# ── Content types ─────────────────────────────────────────────────────────
+
+def frame_exists(filename):
+    fn = (filename or "").strip()
+    if not fn:
+        return False
+    if os.path.exists(os.path.join(FRAMES_DIR, fn)):
+        return True
+    return find_in_tree(FRAMES_DIR, os.path.basename(fn)) is not None
+
+
+def safe_path(base_dir, rel_path, must_exist=True):
+    """Resolve rel_path strictly inside base_dir. Uses realpath on both
+    sides so a relative base_dir or a symlink can't be used to escape
+    (the old startswith check compared a relative join against an absolute
+    base, so it always failed open for relative dirs)."""
+    base = os.path.realpath(base_dir)
+    clean = os.path.normpath(rel_path or "").lstrip("/\\")
+    full = os.path.realpath(os.path.join(base, clean))
+    if full != base and not full.startswith(base + os.sep):
+        return None
+    if must_exist and not os.path.isfile(full):
+        return None
+    return full
+
+
 CT = {
     "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
-    "webp": "image/webp", "gif": "image/gif", "html": "text/html; charset=utf-8",
-    "json": "application/json"
+    "webp": "image/webp", "gif": "image/gif",
+    "html": "text/html; charset=utf-8", "json": "application/json",
 }
 
-# ── Handler ───────────────────────────────────────────────────────────────
+
+# -- OpenAI client ---------------------------------------------------------
+def get_openai_key():
+    """OPENAI_API_KEY env var wins; otherwise read the configured .env."""
+    key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if key:
+        return key
+    if os.path.exists(ENV_PATH):
+        try:
+            with open(ENV_PATH) as ef:
+                for line in ef:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k, v = line.split("=", 1)
+                    if k.strip() in ("OPENAI_KEY", "VOICE_TOOLS_OPENAI_KEY",
+                                     "OPENAI_API_KEY"):
+                        return v.strip().strip("'").strip('"')
+        except OSError:
+            pass
+    return None
+
+
+def require_openai_key():
+    key = get_openai_key()
+    if not key:
+        raise ApiError("OpenAI API key not found — set OPENAI_API_KEY or "
+                       "point --env at a file containing OPENAI_KEY=...", 500)
+    return key
+
+
+def _openai_call(req, timeout):
+    try:
+        return json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode(errors="replace")[:300]
+        except Exception:
+            pass
+        raise ApiError("GPT Image 2 error (HTTP %d): %s" % (e.code, detail), 400)
+    except urllib.error.URLError as e:
+        raise ApiError("Could not reach the OpenAI API: %s" % e.reason, 502)
+    except (TimeoutError, OSError) as e:
+        raise ApiError("OpenAI API timed out or dropped: %s" % e, 504)
+
+
+def _extract_image_bytes(resp):
+    data = resp.get("data") or []
+    if not data:
+        raise ApiError("The API returned no image data", 502)
+    item = data[0]
+    if item.get("b64_json"):
+        return base64.b64decode(item["b64_json"])
+    if item.get("url"):
+        try:
+            return urllib.request.urlopen(item["url"], timeout=120).read()
+        except Exception as e:
+            raise ApiError("Could not download generated image: %s" % e, 502)
+    raise ApiError("Unrecognized image payload from API", 502)
+
+
+def openai_generate_image(prompt, key):
+    body = json.dumps({
+        "model": "gpt-image-2", "prompt": prompt, "n": 1,
+        "size": "2560x1072", "quality": "medium",
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/images/generations", data=body,
+        headers={"Authorization": "Bearer " + key,
+                 "Content-Type": "application/json"})
+    return _extract_image_bytes(_openai_call(req, 180))
+
+
+def openai_edit_image(source_bytes, prompt, key):
+    boundary = "----Boundary" + os.urandom(16).hex()
+
+    def part(lines):
+        return "\r\n".join(lines).encode() + b"\r\n"
+
+    body = b""
+    body += part(["--" + boundary,
+                  'Content-Disposition: form-data; name="image"; filename="source.png"',
+                  "Content-Type: image/png", ""])
+    body += source_bytes + b"\r\n"
+    for name, value in (("prompt", prompt), ("model", "gpt-image-2"),
+                        ("size", "2560x1072"), ("quality", "medium"), ("n", "1")):
+        body += part(["--" + boundary,
+                      'Content-Disposition: form-data; name="%s"' % name,
+                      "", value])
+    body += ("--" + boundary + "--\r\n").encode()
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/images/edits", data=body,
+        headers={"Authorization": "Bearer " + key,
+                 "Content-Type": "multipart/form-data; boundary=" + boundary})
+    return _extract_image_bytes(_openai_call(req, 180))
+
+
+# -- Versioning ------------------------------------------------------------
+def next_version_name(old_file, scene_number):
+    """Return (new_output_file, version_number) for a shot's next render."""
+    if old_file:
+        m = re.search(r"_v(\d+)", old_file)
+        ext = os.path.splitext(old_file)[1] or ".png"
+        if m:
+            return "%s_v%d%s" % (old_file[:m.start()], int(m.group(1)) + 1, ext), int(m.group(1)) + 1
+        return "%s_v2%s" % (os.path.splitext(old_file)[0], ext), 2
+    return "waif_sc_%s_v1.png" % (scene_number or "XX"), 1
+
+
+def push_version(shot, old_file):
+    """Append old_file to the shot's version_history JSON list."""
+    try:
+        history = json.loads(shot.get("version_history") or "[]")
+    except json.JSONDecodeError:
+        history = []
+    if old_file and old_file not in history:
+        history.append(old_file)
+    shot["version_history"] = json.dumps(history)
+    return history
+
+
+def clean_version_history(shot):
+    """Drop history entries whose files no longer exist on disk, so the UI
+    never renders broken thumbnails."""
+    try:
+        history = json.loads(shot.get("version_history") or "[]")
+    except json.JSONDecodeError:
+        history = []
+    cleaned = [h for h in history if frame_exists(h)]
+    if cleaned != history:
+        shot["version_history"] = json.dumps(cleaned)
+    return cleaned
+
+
+def build_generation_prompt(shot):
+    """Prompt from curated_description + lens/location/house style."""
+    if shot.get("prompt"):
+        return shot["prompt"]
+    curated = (shot.get("curated_description") or "").strip()
+    if not curated:
+        raise ApiError("Shot needs curation first — fill in the curated "
+                       "description, then generate", 400)
+    parts = [curated]
+    lens = (shot.get("lens") or "28mm").strip()
+    if lens:
+        parts.append("Shot with " + lens + " lens")
+    loc = (shot.get("location") or "").strip()
+    if loc:
+        parts.append(loc)
+    parts.append("Desaturated palette, cool shadows")
+    parts.append("Photorealistic cinematic still from an indie horror film")
+    ratio = (shot.get("aspect_ratio") or "2.39:1").strip()
+    parts.append("Scope " + ratio + ". No text, no watermark, no logos.")
+    return ". ".join(parts)
+
+
+# -- HTTP handler ----------------------------------------------------------
 class Handler(BaseHTTPRequestHandler):
+    server_version = "ShotDash/2.0"
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, fmt, *args):
         pass  # quiet
 
+    # - plumbing -
     def _respond(self, status, content_type, body_bytes):
         try:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", len(body_bytes))
+            self.send_header("Content-Length", str(len(body_bytes)))
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             self.wfile.write(body_bytes)
@@ -448,413 +784,243 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, data, status=200):
         self._respond(status, "application/json", json.dumps(data).encode())
 
-    def _file(self, path, content_type, status=200):
-        if not os.path.isfile(path):
-            self.send_error(404)
-            return
-        with open(path, "rb") as f:
-            self._respond(status, content_type, f.read())
-
     def _error(self, msg, status=400):
         self._json({"error": msg}, status)
 
-    def _safe_path(self, base_dir, rel_path):
-        """Resolve rel_path to a file under base_dir, preventing traversal."""
-        # Strip any leading slashes and normalize
-        clean = os.path.normpath(rel_path).lstrip("/")
-        full = os.path.join(base_dir, clean)
-        # Must be within base_dir
-        if not full.startswith(os.path.abspath(base_dir)):
-            return None
-        return full if os.path.isfile(full) else None
+    def _file(self, path, content_type):
+        if not os.path.isfile(path):
+            return self._error("File not found", 404)
+        try:
+            with open(path, "rb") as f:
+                self._respond(200, content_type, f.read())
+        except OSError as e:
+            self._error("Could not read file: %s" % e, 500)
 
+    def _serve_image(self, filepath):
+        ext = os.path.splitext(filepath)[1].lower().lstrip(".")
+        self._file(filepath, CT.get(ext, "application/octet-stream"))
+
+    def _read_body(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            raise ApiError("Bad Content-Length")
+        if length <= 0:
+            return {}
+        raw = self.rfile.read(length)
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            raise ApiError("Invalid JSON")
+        if not isinstance(data, dict):
+            raise ApiError("Expected a JSON object")
+        return data
+
+    # - GET -
     def do_GET(self):
-        p = urllib.parse.urlparse(self.path)
-        path = p.path
+        try:
+            self._route_get()
+        except ApiError as e:
+            self._error(str(e), e.status)
+        except Exception as e:
+            self._error("Server error: %r" % e, 500)
+
+    def _route_get(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
 
         if path == "/":
             self._file(HTML_PATH, CT["html"])
 
+        elif path == "/api/health":
+            self._json({"ok": True, "time": time.time()})
+
+        elif path == "/favicon.ico":
+            self._respond(204, "image/x-icon", b"")
+
         elif path == "/api/shots":
-            rows, _ = read_csv()
+            with CSV_LOCK:
+                rows, _ = read_csv()
             self._json({"shots": rows})
 
         elif path == "/api/frames":
             images = list_images(FRAMES_DIR)
-            frames = {}
-            frames_lower = {}
+            frames, frames_lower = {}, {}
             for img in images:
                 base = os.path.basename(img)
                 frames[base] = img
                 frames_lower[base.lower()] = img
-            self._json({"frames": frames, "frames_lower": frames_lower, "all": images})
+            self._json({"frames": frames, "frames_lower": frames_lower,
+                        "all": images})
 
         elif path == "/api/refs":
-            self._json({"images": list_images(REFS_DIR)})
+            cats = refs_by_category()
+            flat = [f for imgs in cats.values() for f in imgs]
+            self._json({"categories": cats, "images": flat})
 
         elif path.startswith("/api/frame/"):
-            filename = urllib.parse.unquote(path[len("/api/frame/"):])
-            filepath = find_in_tree(FRAMES_DIR, filename)
+            rel = urllib.parse.unquote(path[len("/api/frame/"):])
+            filepath = safe_path(FRAMES_DIR, rel)
+            if not filepath:
+                filepath = find_in_tree(FRAMES_DIR, os.path.basename(rel))
             if filepath:
-                ext = os.path.splitext(filepath)[1].lower().lstrip(".")
-                self._file(filepath, CT.get(ext, "application/octet-stream"))
+                self._serve_image(filepath)
             else:
-                self.send_error(404, "Frame not found")
+                self._error("Frame not found: " + rel, 404)
 
         elif path.startswith("/api/ref/"):
             rel = urllib.parse.unquote(path[len("/api/ref/"):])
-            filepath = self._safe_path(REFS_DIR, rel)
+            filepath = safe_path(REFS_DIR, rel)
             if not filepath:
-                filepath = find_in_tree(REFS_DIR, rel)
+                filepath = find_in_tree(REFS_DIR, os.path.basename(rel))
             if filepath:
-                ext = os.path.splitext(filepath)[1].lower().lstrip(".")
-                self._file(filepath, CT.get(ext, "application/octet-stream"))
+                self._serve_image(filepath)
             else:
-                self.send_error(404, "Reference not found")
+                self._error("Reference not found: " + rel, 404)
 
         else:
-            self.send_error(404)
+            self._error("Not found", 404)
+
+    # - POST -
+    POST_ROUTES = {}  # filled in below the class body
 
     def do_POST(self):
-        if self.path == "/api/reorder":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            # Global sequential renumbering: order is a list of output_files in new order
-            order = data.get("order", [])
+        handler = self.POST_ROUTES.get(self.path)
+        if handler is None:
+            return self._error("Unknown endpoint: " + self.path, 404)
+        try:
+            data = self._read_body()
+            handler(self, data)
+        except ApiError as e:
+            self._error(str(e), e.status)
+        except Exception as e:
+            self._error("Server error: %r" % e, 500)
+
+    # - simple CSV endpoints -
+    def api_reorder(self, data):
+        """Global sequential renumbering: 'order' lists output_files in the
+        new order; anything not listed is appended after."""
+        order = data.get("order") or []
+        with CSV_LOCK:
             rows, fieldnames = read_csv()
-            # Build a map of output_file -> new shot_number
-            for i, fn in enumerate(order):
-                for r in rows:
-                    if r.get('output_file', '').strip() == fn:
-                        r['shot_number'] = str(i + 1)
-                        break
-            # Also renumber any rows not in the order list (append at end)
-            max_num = len(order)
+            by_file = {}
             for r in rows:
-                if r.get('output_file', '').strip() not in order:
-                    max_num += 1
-                    r['shot_number'] = str(max_num)
+                by_file.setdefault((r.get("output_file") or "").strip(), r)
+            n = 0
+            seen = set()
+            for fn in order:
+                r = by_file.get((fn or "").strip())
+                if r is not None and id(r) not in seen:
+                    n += 1
+                    r["shot_number"] = str(n)
+                    seen.add(id(r))
+            for r in rows:
+                if id(r) not in seen:
+                    n += 1
+                    r["shot_number"] = str(n)
             write_csv(rows, fieldnames)
-            self._json({"ok": True})
+        self._json({"ok": True})
 
-        elif self.path == "/api/edit":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            edit_instructions = (data.get("edit_instructions") or "").strip()
-            if not edit_instructions:
-                return self._error("Missing edit_instructions")
+    def api_create(self, data):
+        with CSV_LOCK:
             rows, fieldnames = read_csv()
-            row_index = data.get("row_index")
-            output_file = data.get("output_file", "").strip()
-            if output_file:
-                row_index, row = find_row_by_file(rows, output_file)
-                if row_index is None:
-                    return self._error("Shot not found: " + output_file, 400)
-            if row_index is None:
-                return self._error("Missing row_index or output_file")
-            if row_index < 0 or row_index >= len(rows):
-                return self._error("Row index out of range", 400)
-            shot = rows[row_index]
-            old_file = shot.get("output_file", "").strip()
-            if not old_file:
-                return self._error("Shot has no image to edit", 400)
-            source_path = os.path.join(FRAMES_DIR, old_file)
-            if not os.path.exists(source_path):
-                found = None
-                for p in Path(FRAMES_DIR).rglob(old_file):
-                    found = str(p); break
-                if not found:
-                    return self._error("Source image not found: " + old_file, 400)
-                source_path = found
-            with open(source_path, "rb") as sf:
-                source_data = sf.read()
-            edit_prompt = edit_instructions + ". Keep everything else the same: composition, lighting, palette, mood. Photorealistic cinematic still from an indie horror film. No text, no watermark, no logos."
-            key = None
-            env_path = os.path.expanduser("/opt/data/profiles/heavy/.env")
-            if os.path.exists(env_path):
-                with open(env_path) as ef:
-                    for line in ef:
-                        if "OPENAI_KEY" in line or "VOICE_TOOLS_OPENAI_KEY" in line:
-                            key = line.strip().split("=", 1)[1].strip().strip("'").strip('"'); break
-            if not key:
-                return self._error("OpenAI API key not found", 500)
-            import urllib.request, base64
-            boundary = '----Boundary' + os.urandom(16).hex()
-            def enc(lines_list):
-                return '\r\n'.join(lines_list).encode() + b'\r\n'
-            body = b''
-            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="image"; filename="source.png"', 'Content-Type: image/png', ''])
-            body += source_data + b'\r\n'
-            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="prompt"', '', edit_prompt])
-            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="model"', '', 'gpt-image-2'])
-            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="size"', '', '2560x1072'])
-            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="quality"', '', 'medium'])
-            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="n"', '', '1'])
-            body += ('--' + boundary + '--\r\n').encode()
-            req = urllib.request.Request(
-                'https://api.openai.com/v1/images/edits',
-                data=body,
-                headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'multipart/form-data; boundary=' + boundary}
-            )
-            try:
-                resp = json.loads(urllib.request.urlopen(req, timeout=180).read())
-            except urllib.error.HTTPError as e:
-                return self._error("GPT Image 2 edit failed (HTTP " + str(e.code) + "): " + e.read().decode()[:200], 400)
-            except urllib.error.URLError as e:
-                return self._error("API connection error: " + str(e.reason), 500)
-            except Exception as e:
-                return self._error("API error: " + str(e), 500)
-            d = resp.get("data", [{}])
-            if not d:
-                return self._error("No image data in response", 500)
-            if "b64_json" in d[0]:
-                img_bytes = base64.b64decode(d[0]["b64_json"])
+            new_row = {f: str(data.get(f, "") or "") for f in fieldnames}
+            if not new_row.get("status"):
+                new_row["status"] = "pending"
+            sc = new_row.get("scene_number", "")
+            existing = [int(r.get("shot_number") or 0) for r in rows
+                        if r.get("scene_number") == sc]
+            new_row["shot_number"] = str(max(existing) + 1 if existing else 1)
+            # Uniquify the output filename — duplicate output_files would
+            # break file-keyed lookups everywhere else.
+            of = (new_row.get("output_file") or "").strip()
+            if of:
+                taken = {(r.get("output_file") or "").strip() for r in rows}
+                if of in taken:
+                    base, ext = os.path.splitext(of)
+                    n = 2
+                    while "%s_%d%s" % (base, n, ext) in taken:
+                        n += 1
+                    new_row["output_file"] = "%s_%d%s" % (base, n, ext)
+            autofill_shot(new_row)
+            rows.append(new_row)
+            write_csv(rows, fieldnames)
+        self._json({"ok": True, "row": new_row})
+
+    def api_update(self, data):
+        """Set one field. Accepts {field, value} plus output_file/row_index.
+        Also accepts the legacy payload {row_index, status: X}."""
+        field = data.get("field")
+        value = data.get("value")
+        if field is None and "status" in data:
+            field, value = "status", data.get("status")
+        if not field:
+            raise ApiError("Missing field")
+        with CSV_LOCK:
+            rows, fieldnames = read_csv()
+            if field not in fieldnames:
+                raise ApiError("Unknown field: " + str(field))
+            idx, row = resolve_row(rows, data)
+            row[field] = str(value if value is not None else "")
+            write_csv(rows, fieldnames)
+        self._json({"ok": True})
+
+    api_edit_text = api_update  # same semantics, kept for URL compatibility
+
+    def api_archive(self, data):
+        with CSV_LOCK:
+            rows, fieldnames = read_csv()
+            idx, row = resolve_row(rows, data)
+            prev = row.get("status") or "pending"
+            row["status"] = "archived"
+            write_csv(rows, fieldnames)
+        self._json({"ok": True, "previous_status": prev})
+
+    def api_unarchive(self, data):
+        """Restore an archived shot. 'restore_status' lets the client undo
+        to the exact pre-archive status; otherwise a sensible default is
+        chosen (generated if an image exists, else pending)."""
+        restore = (data.get("restore_status") or "").strip()
+        with CSV_LOCK:
+            rows, fieldnames = read_csv()
+            idx, row = resolve_row(rows, data)
+            if restore and restore != "archived":
+                row["status"] = restore
+            elif frame_exists(row.get("output_file")):
+                row["status"] = "generated"
             else:
-                img_bytes = urllib.request.urlopen(d[0]["url"]).read()
-            import re
-            v_match = re.search(r'_v(\d+)', old_file)
-            if v_match:
-                new_v = int(v_match.group(1)) + 1
-                base_name = old_file[:v_match.start()]
-                ext = os.path.splitext(old_file)[1]
+                row["status"] = "pending"
+            write_csv(rows, fieldnames)
+        self._json({"ok": True, "status": row["status"]})
+
+    # - generation endpoints -
+    # The OpenAI call happens OUTSIDE the CSV lock (it can take 3 minutes);
+    # the row is re-resolved afterwards in case the CSV changed meanwhile.
+
+    def api_generate(self, data):
+        with CSV_LOCK:
+            rows, fieldnames = read_csv()
+            idx, shot = resolve_row(rows, data)
+            prompt = build_generation_prompt(shot)
+            identity = (shot.get("output_file") or "").strip()
+            scene = shot.get("scene_number", "XX")
+        key = require_openai_key()
+        img_bytes = openai_generate_image(prompt, key)
+
+        with CSV_LOCK:
+            rows, fieldnames = read_csv()
+            if identity:
+                idx, shot = resolve_row(rows, {"output_file": identity})
             else:
-                new_v = 2
-                base_name = os.path.splitext(old_file)[0]
-                ext = os.path.splitext(old_file)[1]
-            output_file = base_name + "_v" + str(new_v) + ext
+                idx, shot = resolve_row(rows, data)
+            old_file = (shot.get("output_file") or "").strip()
+            output_file, new_v = next_version_name(old_file, scene)
             out_path = os.path.join(FRAMES_DIR, output_file)
+            os.makedirs(FRAMES_DIR, exist_ok=True)
             with open(out_path, "wb") as of:
                 of.write(img_bytes)
-            try:
-                history = json.loads(shot.get("version_history") or "[]")
-            except json.JSONDecodeError:
-                history = []
-            history.append(old_file)
-            shot["version_history"] = json.dumps(history)
-            shot["output_file"] = output_file
-            shot["status"] = "edited"
-            shot["generation_method"] = "edit"
-            shot["endpoint"] = "/v1/images/edits (multipart/form-data POST)"
-            shot["estimated_cost"] = shot.get("estimated_cost") or "$0.04"
-            shot["prompt"] = edit_prompt
-            shot["source_frame"] = old_file
-            write_csv(rows, fieldnames)
-            self._json({"ok": True, "output_file": output_file, "size_kb": len(img_bytes) // 1024, "version": new_v})
-
-        elif self.path == "/api/generate_ref":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            verbatim = (data.get("verbatim_instructions") or "").strip()
-            category = (data.get("category") or "misc").strip()
-            if not verbatim:
-                return self._error("Missing verbatim_instructions")
-            key = _get_openai_key()
-            if not key:
-                return self._error("OpenAI API key not found", 500)
-            # Build curated prompt
-            curation_prompt = f"You are a cinematographer. Create a reference image for an indie horror film. Category: {category}. User instructions: {verbatim}. Generate a detailed image prompt for a photorealistic reference image. No text, no watermark."
-            # For now, use verbatim as the prompt (curation is agent's job)
-            prompt = verbatim + ". " + HOUSE_STYLE
-            import urllib.request, base64
-            body = json.dumps({"model": "gpt-image-2", "prompt": prompt, "n": 1, "size": "2560x1072", "quality": "medium"}).encode()
-            req = urllib.request.Request(
-                "https://api.openai.com/v1/images/generations",
-                data=body,
-                headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"}
-            )
-            try:
-                resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
-            except urllib.error.HTTPError as e:
-                return self._error("GPT Image 2 error: " + e.read().decode()[:200], 400)
-            except Exception as e:
-                return self._error("API error: " + str(e), 500)
-            d = resp.get("data", [{}])
-            if not d:
-                return self._error("No image data", 500)
-            if "b64_json" in d[0]:
-                img_bytes = base64.b64decode(d[0]["b64_json"])
-            else:
-                img_bytes = urllib.request.urlopen(d[0]["url"]).read()
-            # Save to refs dir under category
-            cat_dir = os.path.join(REFS_DIR, category)
-            os.makedirs(cat_dir, exist_ok=True)
-            import time as _time
-            fname = f"ref_{category}_{_time.strftime('%Y%m%d_%H%M%S')}.png"
-            out_path = os.path.join(cat_dir, fname)
-            with open(out_path, "wb") as of:
-                of.write(img_bytes)
-            self._json({"ok": True, "file": fname, "category": category, "size_kb": len(img_bytes) // 1024})
-
-        elif self.path == "/api/archive":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            rows, fieldnames = read_csv()
-            row_index = data.get("row_index")
-            output_file = data.get("output_file", "").strip()
-            if output_file:
-                row_index, row = find_row_by_file(rows, output_file)
-                if row_index is None:
-                    return self._error("Shot not found: " + output_file, 400)
-            if row_index is None:
-                return self._error("Missing row_index or output_file")
-            if row_index < 0 or row_index >= len(rows):
-                return self._error("Row index out of range", 400)
-            rows[row_index]["status"] = "archived"
-            write_csv(rows, fieldnames)
-            self._json({"ok": True})
-
-        elif self.path == "/api/unarchive":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            rows, fieldnames = read_csv()
-            row_index = data.get("row_index")
-            output_file = data.get("output_file", "").strip()
-            if output_file:
-                row_index, row = find_row_by_file(rows, output_file)
-                if row_index is None:
-                    return self._error("Shot not found: " + output_file, 400)
-            if row_index is None:
-                return self._error("Missing row_index or output_file")
-            if row_index < 0 or row_index >= len(rows):
-                return self._error("Row index out of range", 400)
-            rows[row_index]["status"] = "pending"
-            write_csv(rows, fieldnames)
-            self._json({"ok": True})
-
-        elif self.path == "/api/edit_text":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            row_index = data.get("row_index")
-            field = data.get("field")
-            value = data.get("value", "")
-            if row_index is None or not field:
-                return self._error("Missing row_index or field")
-            rows, fieldnames = read_csv()
-            if row_index < 0 or row_index >= len(rows):
-                return self._error("Row index out of range", 400)
-            rows[row_index][field] = value
-            write_csv(rows, fieldnames)
-            self._json({"ok": True})
-
-        elif self.path == "/api/generate":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            rows, fieldnames = read_csv()
-            row_index = data.get("row_index")
-            output_file = data.get("output_file", "").strip()
-            if output_file:
-                row_index, row = find_row_by_file(rows, output_file)
-                if row_index is None:
-                    return self._error("Shot not found: " + output_file, 400)
-            if row_index is None:
-                return self._error("Missing row_index or output_file")
-            if row_index < 0 or row_index >= len(rows):
-                return self._error("Row index out of range", 400)
-            shot = rows[row_index]
-            # Build prompt: require curated_description (filled by agent curation)
-            if shot.get("prompt"):
-                prompt = shot["prompt"]
-            elif shot.get("curated_description"):
-                curated = shot["curated_description"]
-                lens_val = shot.get("lens", "28mm").strip()
-                loc_val = shot.get("location", "").strip()
-                ratio_val = shot.get("aspect_ratio", "2.39:1").strip()
-                parts = [curated]
-                if lens_val:
-                    parts.append("Shot with " + lens_val + " lens")
-                if loc_val:
-                    parts.append(loc_val)
-                parts.append("Desaturated palette, cool shadows")
-                parts.append("Photorealistic cinematic still from an indie horror film")
-                parts.append("Scope " + ratio_val + ". No text, no watermark, no logos.")
-                prompt = ". ".join(parts)
-                shot["prompt"] = prompt
-            else:
-                return self._error("Shot needs curation first — ask the agent to curate this shot", 400)
-            # Load API key
-            key = _get_openai_key()
-            if not key:
-                return self._error("OpenAI API key not found", 500)
-            # Call GPT Image 2
-            import urllib.request, base64
-            body = json.dumps({
-                "model": "gpt-image-2",
-                "prompt": prompt,
-                "n": 1,
-                "size": "2560x1072",
-                "quality": "medium"
-            }).encode()
-            req = urllib.request.Request(
-                "https://api.openai.com/v1/images/generations",
-                data=body,
-                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-            )
-            try:
-                resp = json.loads(urllib.request.urlopen(req, timeout=180).read())
-            except urllib.error.HTTPError as e:
-                err_body = e.read().decode()[:500]
-                return self._error(f"GPT Image 2 blocked: {err_body}", 400)
-            except Exception as e:
-                return self._error(f"API error: {str(e)}", 500)
-            d = resp.get("data", [{}])
-            if not d:
-                return self._error("No image data in response", 500)
-            if "b64_json" in d[0]:
-                img_bytes = base64.b64decode(d[0]["b64_json"])
-            else:
-                img_bytes = urllib.request.urlopen(d[0]["url"]).read()
-            # Versioning: push current file to history, increment version
-            import re
-            old_file = shot.get("output_file", "").strip()
-            old_sc = shot.get("scene_number", "XX")
             if old_file:
-                # Push current to version history
-                try:
-                    history = json.loads(shot.get("version_history") or "[]")
-                except json.JSONDecodeError:
-                    history = []
-                history.append(old_file)
-                shot["version_history"] = json.dumps(history)
-                # Determine new version number
-                v_match = re.search(r'_v(\d+)', old_file)
-                if v_match:
-                    new_v = int(v_match.group(1)) + 1
-                    base_name = old_file[:v_match.start()]
-                    ext = os.path.splitext(old_file)[1]
-                else:
-                    new_v = 2
-                    base_name = os.path.splitext(old_file)[0]
-                    ext = os.path.splitext(old_file)[1]
-            else:
-                new_v = 1
-                base_name = f"waif_sc_{old_sc}"
-                ext = ".png"
-            output_file = f"{base_name}_v{new_v}{ext}"
-            out_path = os.path.join(FRAMES_DIR, output_file)
-            with open(out_path, "wb") as of:
-                of.write(img_bytes)
-            # Update CSV with all fields matching earlier pipeline
+                push_version(shot, old_file)
             shot["status"] = "generated"
             shot["output_file"] = output_file
             shot["prompt"] = prompt
@@ -862,152 +1028,170 @@ class Handler(BaseHTTPRequestHandler):
             shot["quality"] = shot.get("quality") or "medium"
             shot["generation_method"] = shot.get("generation_method") or "generation"
             shot["estimated_cost"] = shot.get("estimated_cost") or "$0.04"
+            shot["iteration_count"] = str(new_v)
             if not shot.get("lens"):
                 shot["lens"] = "28mm"
             if not shot.get("endpoint"):
                 shot["endpoint"] = "/v1/images/generations (JSON POST)"
             if not shot.get("curated_description"):
                 shot["curated_description"] = (shot.get("verbatim_instructions") or "")[:300]
-            # Auto-fill fountain text
-            sc = shot.get("scene_number", "")
-            if sc in SCENE_TEXT and not shot.get("fountain_text"):
-                shot["fountain_text"] = SCENE_TEXT[sc]
-            # Auto-detect characters from instructions
-            instr = (shot.get("verbatim_instructions") or "").lower()
-            if not shot.get("characters") and instr:
-                chars = []
-                has_jrm = any(k in instr for k in ("jrm", "jonathan"))
-                for kw, name in [("ben", "Ben"), ("jrm", "Ben (JRM)"), ("jonathan", "Ben (JRM)"), ("marie", "Marie"), ("waif", "Waif"), ("jack", "Jack")]:
-                    if kw in instr and not (kw == "ben" and has_jrm):
-                        if name not in chars:
-                            chars.append(name)
-                if chars:
-                    shot["characters"] = ", ".join(chars)
+            autofill_shot(shot)
+            history = clean_version_history(shot)
             write_csv(rows, fieldnames)
-            self._json({"ok": True, "output_file": output_file, "size_kb": len(img_bytes) // 1024, "version": new_v, "history": json.loads(shot.get("version_history", "[]"))})
+        self._json({"ok": True, "output_file": output_file,
+                    "size_kb": len(img_bytes) // 1024, "version": new_v,
+                    "history": history})
 
-        elif self.path == "/api/swap_version":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            swap_file = data.get("swap_file", "").strip()
-            if not swap_file:
-                return self._error("Missing swap_file")
+    def api_edit(self, data):
+        edit_instructions = (data.get("edit_instructions") or "").strip()
+        if not edit_instructions:
+            raise ApiError("Missing edit_instructions")
+        with CSV_LOCK:
             rows, fieldnames = read_csv()
-            row_index = data.get("row_index")
-            output_file = data.get("output_file", "").strip()
-            if output_file:
-                row_index, row = find_row_by_file(rows, output_file)
-                if row_index is None:
-                    return self._error("Shot not found: " + output_file, 400)
-            if row_index is None:
-                return self._error("Missing row_index or output_file")
-            if row_index < 0 or row_index >= len(rows):
-                return self._error("Row index out of range", 400)
-            shot = rows[row_index]
+            idx, shot = resolve_row(rows, data)
+            old_file = (shot.get("output_file") or "").strip()
+            if not old_file:
+                raise ApiError("Shot has no image to edit")
+            source_path = os.path.join(FRAMES_DIR, old_file)
+            if not os.path.exists(source_path):
+                source_path = find_in_tree(FRAMES_DIR, os.path.basename(old_file))
+                if not source_path:
+                    raise ApiError("Source image not found: " + old_file)
+            with open(source_path, "rb") as sf:
+                source_data = sf.read()
+        edit_prompt = edit_instructions + EDIT_SUFFIX
+        key = require_openai_key()
+        img_bytes = openai_edit_image(source_data, edit_prompt, key)
+
+        with CSV_LOCK:
+            rows, fieldnames = read_csv()
+            idx, shot = resolve_row(rows, {"output_file": old_file})
+            output_file, new_v = next_version_name(old_file, shot.get("scene_number", "XX"))
+            out_path = os.path.join(FRAMES_DIR, output_file)
+            with open(out_path, "wb") as of:
+                of.write(img_bytes)
+            push_version(shot, old_file)
+            shot["output_file"] = output_file
+            shot["status"] = "edited"
+            shot["generation_method"] = "edit"
+            shot["endpoint"] = "/v1/images/edits (multipart/form-data POST)"
+            shot["estimated_cost"] = shot.get("estimated_cost") or "$0.04"
+            shot["prompt"] = edit_prompt
+            shot["source_frame"] = old_file
+            shot["iteration_count"] = str(new_v)
+            history = clean_version_history(shot)
+            write_csv(rows, fieldnames)
+        self._json({"ok": True, "output_file": output_file,
+                    "size_kb": len(img_bytes) // 1024, "version": new_v,
+                    "history": history})
+
+    def api_swap_version(self, data):
+        swap_file = (data.get("swap_file") or "").strip()
+        if not swap_file:
+            raise ApiError("Missing swap_file")
+        with CSV_LOCK:
+            rows, fieldnames = read_csv()
+            idx, shot = resolve_row(rows, data)
             try:
                 history = json.loads(shot.get("version_history") or "[]")
             except json.JSONDecodeError:
                 history = []
             if swap_file not in history:
-                return self._error("File not in version history", 400)
-            # Verify swap_file exists on disk
-            swap_path = os.path.join(FRAMES_DIR, swap_file)
-            if not os.path.exists(swap_path):
-                # Try finding it
-                found = None
-                for p in Path(FRAMES_DIR).rglob(swap_file):
-                    found = str(p); break
-                if not found:
-                    return self._error("File not found on disk: " + swap_file, 400)
-            # Swap: current goes into history, swap_file becomes current
-            current = shot["output_file"]
+                raise ApiError("File not in version history")
+            if not frame_exists(swap_file):
+                raise ApiError("File not found on disk: " + swap_file)
+            current = shot.get("output_file") or ""
             history.remove(swap_file)
-            history.append(current)
+            if current:
+                history.append(current)
             shot["output_file"] = swap_file
             shot["version_history"] = json.dumps(history)
-            # Remove missing files from history (prevent broken thumbnails)
-            clean_hist = [h for h in history if os.path.exists(os.path.join(FRAMES_DIR, h)) or any(Path(FRAMES_DIR).rglob(h))]
-            shot["version_history"] = json.dumps(clean_hist)
+            cleaned = clean_version_history(shot)
             write_csv(rows, fieldnames)
-            self._json({"ok": True, "current": swap_file, "history": clean_hist})
+        self._json({"ok": True, "current": swap_file, "history": cleaned})
 
-        elif self.path == "/api/create":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            rows, fieldnames = read_csv()
-            new_row = {f: data.get(f, "") for f in fieldnames}
-            if not new_row.get("status"):
-                new_row["status"] = "pending"
-            sc = new_row.get("scene_number", "")
-            existing = [int(r.get("shot_number") or 0) for r in rows if r.get("scene_number") == sc]
-            new_row["shot_number"] = str(max(existing) + 1 if existing else 1)
-            # Auto-fill fountain text, location, and characters
-            instr = (new_row.get("verbatim_instructions") or "").lower()
-            if sc in SCENE_TEXT and not new_row.get("fountain_text"):
-                new_row["fountain_text"] = SCENE_TEXT[sc]
-            # Location from scene lookup
-            if sc in SCENE_LOOKUP:
-                if not new_row.get("location"):
-                    new_row["location"] = SCENE_LOOKUP[sc]["location"]
-            elif not new_row.get("location"):
-                # Infer from instructions keywords
-                for kw, loc in [("cabin", "Cabin — Broken Bow"), ("court", "Municipal Courthouse"), ("motel", "Motel"), ("pickup", "Pickup Truck"), ("suburban", "Suburban House"), ("intersection", "The Intersection"), ("broken bow", "Broken Bow")]:
-                    if kw in instr:
-                        new_row["location"] = loc
-                        break
-            # Characters: keyword matching from instructions + scene lookup fallback
-            if not new_row.get("characters"):
-                chars = []
-                for kw, name in [("ben", "Ben"), ("jrm", "Ben (JRM)"), ("jonathan", "Ben (JRM)"), ("marie", "Marie"), ("waif", "Waif"), ("jack", "Jack"), ("neighbor", "Neighbor"), ("mother", "The Mother"), ("lawyer", "Lawyer"), ("jamie", "Jamie"), ("ricky", "Ricky"), ("schrödinger", "Schrödinger"), ("schrodinger", "Schrödinger")]:
-                    if kw in instr:
-                        chars.append(name)
-                if chars:
-                    new_row["characters"] = ", ".join(chars)
-                elif sc in SCENE_LOOKUP and SCENE_LOOKUP[sc].get("characters"):
-                    new_row["characters"] = SCENE_LOOKUP[sc]["characters"]
-            rows.append(new_row)
-            write_csv(rows, fieldnames)
-            self._json({"ok": True, "row": new_row})
+    def api_generate_ref(self, data):
+        verbatim = (data.get("verbatim_instructions") or "").strip()
+        if not verbatim:
+            raise ApiError("Missing verbatim_instructions")
+        category = re.sub(r"[^A-Za-z0-9_\-]", "_",
+                          (data.get("category") or "misc").strip()) or "misc"
+        key = require_openai_key()
+        prompt = verbatim + ". " + HOUSE_STYLE
+        img_bytes = openai_generate_image(prompt, key)
+        cat_dir = os.path.join(REFS_DIR, category)
+        os.makedirs(cat_dir, exist_ok=True)
+        fname = "ref_%s_%s.png" % (category, time.strftime("%Y%m%d_%H%M%S"))
+        with open(os.path.join(cat_dir, fname), "wb") as of:
+            of.write(img_bytes)
+        self._json({"ok": True, "file": category + "/" + fname,
+                    "category": category, "size_kb": len(img_bytes) // 1024})
 
-        elif self.path == "/api/update":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                data = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                return self._error("Invalid JSON")
-            idx = data.get("row_index")
-            field = data.get("field", "status")
-            value = data.get("value", "")
-            if idx is None:
-                return self._error("Missing row_index")
-            if update_shot_field(idx, field, value):
-                self._json({"ok": True})
-            else:
-                self._error("Row index out of range", 400)
-        else:
-            self.send_error(404)
+    def api_ref_delete(self, data):
+        rel = (data.get("file") or "").strip()
+        filepath = safe_path(REFS_DIR, rel)
+        if not filepath:
+            raise ApiError("Reference not found: " + rel, 404)
+        os.remove(filepath)
+        self._json({"ok": True})
 
-# ── Main ──────────────────────────────────────────────────────────────────
+    def api_ref_move(self, data):
+        rel = (data.get("file") or "").strip()
+        category = re.sub(r"[^A-Za-z0-9_\-]", "_",
+                          (data.get("category") or "").strip())
+        if not category:
+            raise ApiError("Missing category")
+        filepath = safe_path(REFS_DIR, rel)
+        if not filepath:
+            raise ApiError("Reference not found: " + rel, 404)
+        dest_dir = os.path.join(REFS_DIR, category)
+        os.makedirs(dest_dir, exist_ok=True)
+        dest = os.path.join(dest_dir, os.path.basename(filepath))
+        if os.path.abspath(dest) == os.path.abspath(filepath):
+            return self._json({"ok": True, "file": rel})
+        if os.path.exists(dest):
+            raise ApiError("A file with that name already exists in " + category, 409)
+        os.replace(filepath, dest)
+        self._json({"ok": True,
+                    "file": category + "/" + os.path.basename(filepath)})
+
+
+Handler.POST_ROUTES = {
+    "/api/reorder": Handler.api_reorder,
+    "/api/create": Handler.api_create,
+    "/api/update": Handler.api_update,
+    "/api/edit_text": Handler.api_edit_text,
+    "/api/archive": Handler.api_archive,
+    "/api/unarchive": Handler.api_unarchive,
+    "/api/generate": Handler.api_generate,
+    "/api/edit": Handler.api_edit,
+    "/api/swap_version": Handler.api_swap_version,
+    "/api/generate_ref": Handler.api_generate_ref,
+    "/api/ref_delete": Handler.api_ref_delete,
+    "/api/ref_move": Handler.api_ref_move,
+}
+
+
+# -- Main ------------------------------------------------------------------
 def main():
     parse_args()
-    print(f"🎬 Shot Dash")
-    print(f"   CSV:      {CSV_PATH}")
-    print(f"   Frames:   {FRAMES_DIR}")
-    print(f"   Refs:     {REFS_DIR}")
-    print(f"   → http://localhost:{PORT}")
-    print(f"   Ctrl+C to stop\n")
-    server = HTTPServer(("0.0.0.0", PORT), Handler)
+    _load_scene_text()
+    print("Shot Dash v2")
+    print("   CSV:      %s%s" % (CSV_PATH, "" if os.path.exists(CSV_PATH) else "  (missing — starting empty)"))
+    print("   Frames:   %s" % FRAMES_DIR)
+    print("   Refs:     %s" % REFS_DIR)
+    if not get_openai_key():
+        print("   WARNING:  no OpenAI key found — generate/edit will fail")
+    print("   -> http://localhost:%d" % PORT)
+    print("   Ctrl+C to stop\n")
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    server.daemon_threads = True
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nShutting down.")
         server.server_close()
+
 
 if __name__ == "__main__":
     main()

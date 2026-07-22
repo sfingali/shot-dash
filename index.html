@@ -3,522 +3,1054 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Shot Dash</title>
+<title>Shot Dash — THE WAIF</title>
 <style>
-:root{--bg:#0d0d0d;--surface:#1a1a1a;--border:#2a2a2a;--text:#ddd;--text-dim:#888;--accent:#f0c040;--accent-dim:#3a3020;--red:#e04040;--green:#40c040}
+/* ============ Design tokens ============ */
+:root{
+  /* color */
+  --bg:#0b0c0e; --surface:#15171a; --surface-2:#1c1f23; --surface-3:#22262b;
+  --border:#2a2e33; --border-strong:#3d4249;
+  --text:#d8dade; --text-dim:#8b9097; --text-faint:#5a5f66;
+  --accent:#e8b33c; --accent-strong:#f3c65a; --accent-dim:rgba(232,179,60,.12);
+  --red:#e05c5c; --red-dim:rgba(224,92,92,.12);
+  --green:#4fbf6b; --green-dim:rgba(79,191,107,.12);
+  --blue:#5aa0e0; --blue-dim:rgba(90,160,224,.12);
+  --purple:#a98ae0; --purple-dim:rgba(169,138,224,.14);
+  --teal:#4cc2b4; --teal-dim:rgba(76,194,180,.12);
+  /* spacing scale */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px;
+  /* radius */
+  --r1:4px; --r2:8px;
+  /* type */
+  --mono:ui-monospace,"Cascadia Mono","SF Mono",Consolas,monospace;
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font:13px/1.5 system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
-.banner{display:flex;align-items:center;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--border);gap:12px;flex-shrink:0}
-.banner h1{font-size:16px;color:var(--accent)}
-.tabs{display:flex;gap:2px;margin-left:16px}
-.tab{padding:4px 14px;background:var(--bg);border:1px solid var(--border);border-radius:4px 4px 0 0;cursor:pointer;font-size:12px;color:var(--text-dim)}
-.tab.active{background:var(--surface);color:var(--accent);border-bottom-color:var(--surface)}
-.toolbar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
-.toolbar input,.toolbar select,.toolbar button{padding:4px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px}
-.toolbar button{cursor:pointer;font-weight:600}
-.toolbar button:hover{background:var(--accent-dim)}
-.btn-accent{background:var(--accent)!important;color:#000!important;border-color:var(--accent)!important}
-.content{flex:1;overflow:auto;display:flex;min-height:0}
-/* Shots tab */
-.shots-layout{display:flex;flex-direction:column;flex:1;min-height:0}
-.shot-grid-wrap{flex:1;overflow:auto;min-height:0}
-.shot-grid-wrap table{width:100%;border-collapse:collapse}
-.shot-grid-wrap th{position:sticky;top:0;background:var(--surface);color:var(--text-dim);font-size:11px;text-align:left;padding:4px 8px;border-bottom:2px solid var(--border);cursor:pointer;white-space:nowrap}
-.shot-grid-wrap td{padding:3px 8px;border-bottom:1px solid var(--border);font-size:12px;white-space:nowrap}
-.shot-grid-wrap tr{cursor:pointer}
-.shot-grid-wrap tr:hover{background:var(--accent-dim)}
-.shot-grid-wrap tr.selected{background:var(--accent-dim);outline:1px solid var(--accent)}
-/* Viewer panel */
-.viewer{flex-shrink:0;border-top:2px solid var(--border);background:var(--surface);display:flex;gap:12px;padding:8px 12px;overflow:hidden;max-height:45vh}
-.viewer-frame{flex-shrink:0;width:50%;position:relative;cursor:pointer;min-width:300px}
-.viewer-frame img{width:100%;height:auto;border-radius:4px;border:1px solid var(--border)}
-.viewer-frame .empty{color:var(--text-dim);font-size:14px;text-align:center;padding:40px 0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font:13px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:5px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ============ Base controls ============ */
+.input,.select,.btn{padding:5px 10px;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:var(--r1);font-size:12px}
+.input::placeholder{color:var(--text-faint)}
+.btn{cursor:pointer;font-weight:600;transition:background .12s,border-color .12s}
+.btn:hover{background:var(--surface-3);border-color:var(--border-strong)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn-accent{background:var(--accent);color:#141210;border-color:var(--accent)}
+.btn-accent:hover{background:var(--accent-strong);border-color:var(--accent-strong)}
+.btn-danger{color:var(--red)}
+.btn-danger:hover{background:var(--red-dim);border-color:var(--red)}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--text-dim)}
+.btn-ghost:hover{color:var(--text);background:var(--surface-2)}
+
+/* ============ Banner + tabs ============ */
+.banner{display:flex;align-items:center;gap:var(--s4);padding:var(--s2) var(--s4);background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.banner h1{font-size:15px;color:var(--accent);letter-spacing:.02em;white-space:nowrap}
+.banner h1 .film{color:var(--text-faint);font-weight:400;font-size:12px;letter-spacing:.14em;margin-left:var(--s2)}
+.tabs{display:flex;gap:2px}
+.tab{padding:var(--s1) var(--s4);background:transparent;border:1px solid transparent;border-radius:var(--r1);cursor:pointer;font-size:12px;font-weight:600;color:var(--text-dim)}
+.tab:hover{color:var(--text)}
+.tab.active{background:var(--accent-dim);color:var(--accent);border-color:var(--border)}
+.tab .n{font-weight:400;color:var(--text-faint);margin-left:4px}
+.stats{margin-left:auto;font-size:12px;color:var(--text-dim);display:flex;gap:var(--s3);white-space:nowrap}
+.stats b{font-weight:600}
+
+/* ============ Toolbar ============ */
+.toolbar{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s4);background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
+.toolbar .spacer{flex:1}
+.count{font-size:12px;color:var(--text-dim)}
+
+/* ============ Layout ============ */
+.content{flex:1;overflow:hidden;display:none;min-height:0}
+.content.active{display:flex}
+.col{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0}
+
+/* ============ Shot grid ============ */
+.grid-wrap{flex:1;overflow:auto;min-height:0}
+.grid-wrap table{width:100%;border-collapse:collapse}
+.grid-wrap th{position:sticky;top:0;z-index:2;background:var(--surface);color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:var(--s1) var(--s2);border-bottom:1px solid var(--border-strong);cursor:pointer;white-space:nowrap;user-select:none}
+.grid-wrap th:hover{color:var(--text)}
+.grid-wrap td{padding:var(--s1) var(--s2);border-bottom:1px solid var(--border);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;font-variant-numeric:tabular-nums}
+.grid-wrap tr[data-key]{cursor:pointer}
+.grid-wrap tr[data-key]:hover{background:var(--surface-2)}
+.grid-wrap tr.selected{background:var(--accent-dim)}
+.grid-wrap tr.selected td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+.grid-wrap tr.dragging{opacity:.4}
+.grid-wrap tr.drop-target td{border-top:2px solid var(--accent)}
+td.mono,.mono{font-family:var(--mono);font-size:11px}
+.empty-state{padding:48px var(--s5);text-align:center;color:var(--text-dim)}
+.empty-state .big{font-size:15px;margin-bottom:var(--s2);color:var(--text)}
+
+/* ============ Status pills ============ */
+.pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;font-weight:600;line-height:1.5;text-transform:lowercase}
+.st-pending{background:var(--surface-3);color:var(--text-dim)}
+.st-curated{background:var(--blue-dim);color:var(--blue)}
+.st-generated{background:var(--green-dim);color:var(--green)}
+.st-approved{background:var(--accent-dim);color:var(--accent)}
+.st-edited{background:var(--purple-dim);color:var(--purple)}
+.st-selected{background:var(--teal-dim);color:var(--teal)}
+.st-archived{background:var(--surface-3);color:var(--text-faint)}
+
+/* ============ Viewer ============ */
+.viewer{flex-shrink:0;border-top:2px solid var(--border-strong);background:var(--surface);display:flex;gap:var(--s4);padding:var(--s3) var(--s4);overflow:hidden;max-height:46vh}
+.viewer-left{flex-shrink:0;width:48%;min-width:280px;display:flex;flex-direction:column;gap:var(--s2);overflow:hidden}
+.viewer-frame{position:relative;cursor:zoom-in}
+.viewer-frame img{width:100%;height:auto;max-height:32vh;object-fit:contain;border-radius:var(--r1);border:1px solid var(--border);display:block;background:#000}
+.viewer-frame .empty{color:var(--text-dim);font-size:13px;text-align:center;padding:40px var(--s4);border:1px dashed var(--border);border-radius:var(--r1)}
+.progress{position:absolute;left:0;right:0;bottom:0;height:3px;overflow:hidden;border-radius:0 0 var(--r1) var(--r1);display:none}
+.progress.on{display:block}
+.progress i{display:block;height:100%;width:40%;background:var(--accent);animation:slide 1.2s ease-in-out infinite}
+@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
+.version-strip{display:flex;gap:var(--s1);overflow-x:auto;padding-bottom:2px}
+.version-strip:empty{display:none}
+.version-strip img{width:56px;height:26px;object-fit:cover;border:1px solid var(--border);border-radius:2px;cursor:pointer;flex-shrink:0}
+.version-strip img:hover{border-color:var(--accent)}
 .viewer-info{flex:1;overflow-y:auto;font-size:12px;min-width:0}
-.viewer-info .row{margin-bottom:6px}
-.viewer-info .label{color:var(--text-dim);font-weight:600;display:inline-block;min-width:80px}
-.viewer-info .editable{cursor:pointer;border-bottom:1px dashed var(--border)}
-.viewer-info .editable:hover{color:var(--accent)}
-.viewer-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-.viewer-actions button{padding:4px 12px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:var(--bg);color:var(--text);border:1px solid var(--border)}
-.viewer-actions button:hover{background:var(--accent-dim)}
-.version-strip{display:flex;gap:4px;margin-top:8px;overflow-x:auto;padding:4px 0}
-.version-strip img{width:50px;height:24px;object-fit:cover;border:1px solid var(--border);border-radius:2px;cursor:pointer}
-.version-strip img:hover,.version-strip img.active{border-color:var(--accent)}
-/* Refs tab */
-.refs-layout{display:flex;flex-direction:column;flex:1;min-height:0}
-.refs-toolbar{display:flex;gap:8px;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
-.refs-toolbar input,.refs-toolbar select,.refs-toolbar button{padding:4px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px}
-.refs-toolbar button{cursor:pointer}
-.refs-grid{flex:1;overflow:auto;padding:12px;display:flex;flex-wrap:wrap;gap:12px;align-content:flex-start}
-.ref-cat{width:100%}
-.ref-cat h3{color:var(--accent);font-size:14px;margin:8px 0 4px;text-transform:capitalize}
-.ref-cat-imgs{display:flex;flex-wrap:wrap;gap:8px}
-.ref-cat-imgs img{width:160px;height:90px;object-fit:cover;border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:transform .15s}
-.ref-cat-imgs img:hover{transform:scale(1.05);border-color:var(--accent)}
-.ref-cat-imgs .ref-label{font-size:10px;color:var(--text-dim);text-align:center;margin-top:2px;word-break:break-all}
-.ref-item{display:flex;flex-direction:column;align-items:center}
-/* Modals */
-.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:100;align-items:center;justify-content:center}
+.viewer-info .row{margin-bottom:var(--s2);line-height:1.55}
+.viewer-info .label{color:var(--text-faint);font-weight:600;display:inline-block;min-width:88px;font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+.viewer-info .editable{cursor:pointer;border-bottom:1px dashed var(--border-strong)}
+.viewer-info .editable:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.viewer-actions{display:flex;gap:var(--s2);margin-bottom:var(--s2);flex-wrap:wrap;align-items:center}
+.viewer-actions .btn{padding:4px 12px;font-size:11px}
+
+/* ============ Refs + archive cards ============ */
+.cards{flex:1;overflow:auto;padding:var(--s4);align-content:flex-start}
+.ref-cat{margin-bottom:var(--s4)}
+.ref-cat h3{color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:var(--s2)}
+.ref-cat h3 .n{color:var(--text-faint);font-weight:400;margin-left:var(--s1)}
+.card-row{display:flex;flex-wrap:wrap;gap:var(--s3)}
+.card{display:flex;flex-direction:column;gap:var(--s1);width:168px}
+.card .thumb{position:relative;width:168px;height:94px;border:1px solid var(--border);border-radius:var(--r1);overflow:hidden;background:#000}
+.card .thumb img{width:100%;height:100%;object-fit:cover;cursor:pointer;transition:transform .15s}
+.card .thumb:hover img{transform:scale(1.04)}
+.card .thumb .acts{position:absolute;top:4px;right:4px;display:none;gap:4px}
+.card .thumb:hover .acts{display:flex}
+.card .thumb .acts button{padding:2px 7px;font-size:11px;background:rgba(11,12,14,.85);border:1px solid var(--border-strong);border-radius:var(--r1);cursor:pointer;color:var(--text)}
+.card .thumb .acts button:hover{border-color:var(--accent);color:var(--accent)}
+.card .thumb .acts button.del:hover{border-color:var(--red);color:var(--red)}
+.card .name{font-size:10px;color:var(--text-dim);word-break:break-all;font-family:var(--mono);text-align:center}
+.card .btn{font-size:11px;padding:3px 8px}
+
+/* ============ Modals ============ */
+.modal{display:none;position:fixed;inset:0;background:rgba(5,6,7,.85);z-index:100;align-items:center;justify-content:center}
 .modal.open{display:flex}
-.modal-inner{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto}
-.modal-inner h3{color:var(--accent);margin:0 0 12px}
-.modal-inner textarea,.modal-inner input{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:8px;font-size:13px;margin-bottom:8px}
-.modal-inner textarea{resize:vertical;min-height:80px}
-.modal-inner button{padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;margin-right:6px}
-.modal-full-img{max-width:95vw;max-height:95vh;border-radius:4px}
-.toast{position:fixed;bottom:20px;right:20px;background:var(--surface);border:1px solid var(--border);padding:10px 18px;border-radius:6px;z-index:300;font-size:13px;opacity:0;transition:opacity .3s}
-.toast.show{opacity:1}
+.modal-inner{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r2);padding:var(--s5);max-width:540px;width:92%;max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.5)}
+.modal-inner h3{color:var(--accent);font-size:14px;margin-bottom:var(--s4)}
+.modal-inner label{display:block;font-size:11px;color:var(--text-dim);margin-bottom:var(--s1);text-transform:uppercase;letter-spacing:.06em}
+.modal-inner .field{margin-bottom:var(--s3)}
+.modal-inner textarea,.modal-inner input,.modal-inner select{width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:var(--r1);padding:var(--s2);font-size:13px;font-family:inherit}
+.modal-inner textarea{resize:vertical;min-height:88px}
+.modal-inner textarea.invalid,.modal-inner input.invalid{border-color:var(--red)}
+.modal-inner .hint{font-size:11px;color:var(--text-faint);margin-top:var(--s1)}
+.modal-inner .err{font-size:12px;color:var(--red);margin-top:var(--s1);display:none}
+.modal-inner .err.on{display:block}
+.modal-foot{display:flex;gap:var(--s2);justify-content:flex-end;margin-top:var(--s4)}
+.modal-full-img{max-width:95vw;max-height:95vh;border-radius:var(--r1)}
+.kbd-list{display:grid;grid-template-columns:auto 1fr;gap:var(--s2) var(--s4);font-size:12px}
+kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1px solid var(--border-strong);border-bottom-width:2px;border-radius:var(--r1);padding:1px 6px;color:var(--text)}
+
+/* ============ Toasts ============ */
+#toasts{position:fixed;bottom:var(--s4);right:var(--s4);z-index:300;display:flex;flex-direction:column;gap:var(--s2);max-width:360px}
+.toast{display:flex;align-items:flex-start;gap:var(--s3);background:var(--surface-2);border:1px solid var(--border-strong);padding:var(--s2) var(--s3);border-radius:var(--r1);font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.45);animation:pop .18s ease-out}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .toast.error{border-color:var(--red);color:var(--red)}
-@media(max-width:800px){.viewer{flex-direction:column}.viewer-frame{width:100%}}
+.toast .msg{flex:1;word-break:break-word}
+.toast .act{background:none;border:none;color:var(--accent);font-weight:700;cursor:pointer;font-size:12px;padding:0}
+.toast .act:hover{color:var(--accent-strong)}
+.toast .x{background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;line-height:1;padding:0}
+.toast .x:hover{color:var(--text)}
+
+/* ============ Job chips ============ */
+#jobs{position:fixed;bottom:var(--s4);left:var(--s4);z-index:300;display:flex;flex-direction:column;gap:var(--s2)}
+.job{display:flex;align-items:center;gap:var(--s2);background:var(--surface-2);border:1px solid var(--accent);color:var(--accent);padding:var(--s1) var(--s3);border-radius:12px;font-size:12px;font-weight:600}
+.job .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:blink 1s ease-in-out infinite}
+@keyframes blink{50%{opacity:.25}}
+.job .t{color:var(--text-dim);font-weight:400;font-variant-numeric:tabular-nums}
+
+/* ============ Responsive ============ */
+@media(max-width:860px){
+  .viewer{flex-direction:column;max-height:60vh;overflow-y:auto}
+  .viewer-left{width:100%;min-width:0}
+  .viewer-frame img{max-height:28vh}
+  .grid-wrap td{max-width:160px}
+  .banner{flex-wrap:wrap;gap:var(--s2)}
+  .stats{margin-left:0;width:100%}
+}
+@media(prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
 </style>
 </head>
 <body>
 <div class="banner">
-  <h1>🎬 Shot Dash</h1>
-  <div class="tabs">
-    <button class="tab active" onclick="switchTab('shots')">Shots</button>
-    <button class="tab" onclick="switchTab('refs')">References</button>
-    <button class="tab" onclick="switchTab('archive')">Archive</button>
+  <h1>&#127916; Shot Dash<span class="film">THE WAIF</span></h1>
+  <div class="tabs" role="tablist">
+    <button class="tab active" id="tabBtnShots" onclick="switchTab('shots')">Shots</button>
+    <button class="tab" id="tabBtnRefs" onclick="switchTab('refs')">References</button>
+    <button class="tab" id="tabBtnArchive" onclick="switchTab('archive')">Archive <span class="n" id="archCount"></span></button>
   </div>
-  <span style="margin-left:auto;font-size:12px;color:var(--text-dim)" id="stats"></span>
+  <div class="stats" id="stats"></div>
+  <button class="btn btn-ghost" onclick="openHelp()" title="Keyboard shortcuts (?)">?</button>
 </div>
 
 <!-- SHOTS TAB -->
-<div id="tabShots" class="content">
-<div class="shots-layout">
-<div class="toolbar">
-  <input id="search" placeholder="Filter shots…" oninput="renderGrid()">
-  <select id="statusFilter" onchange="renderGrid()">
-    <option value="">All</option><option>Pending</option><option>Curated</option><option>Generated</option><option>Approved</option><option>Edited</option>
-  </select>
-  <button onclick="showCreateForm()">+ New Shot</button>
-  <button onclick="toggleRefs()">📷 Refs</button>
-  <span id="count" style="font-size:12px;color:var(--text-dim)">0 shots</span>
-</div>
-<div class="shot-grid-wrap">
-  <table><thead id="thead"></thead><tbody id="grid"></tbody></table>
-</div>
-<div class="viewer" id="viewer">
-  <div class="viewer-frame" id="viewerImage" onclick="openFullImage()" title="Click for full size">
-    <img id="frameImg" src="" alt="" style="display:none">
-    <div class="empty" id="viewerEmpty">← Select a shot</div>
+<div id="tabShots" class="content active">
+  <div class="col">
+    <div class="toolbar">
+      <input id="search" class="input" placeholder="Filter shots&hellip;  ( / )" oninput="renderGrid()" style="width:220px">
+      <select id="statusFilter" class="select" onchange="renderGrid()">
+        <option value="">All statuses</option>
+        <option value="pending">pending</option>
+        <option value="curated">curated</option>
+        <option value="generated">generated</option>
+        <option value="approved">approved</option>
+        <option value="edited">edited</option>
+        <option value="selected">selected</option>
+      </select>
+      <button class="btn btn-accent" onclick="showCreateForm()">+ New shot</button>
+      <span class="spacer"></span>
+      <span class="count" id="count"></span>
+      <button class="btn btn-ghost" onclick="refreshData()" title="Reload from CSV">&#8635; Refresh</button>
+    </div>
+    <div class="grid-wrap" id="gridWrap">
+      <table><thead id="thead"></thead><tbody id="grid"></tbody></table>
+      <div class="empty-state" id="gridEmpty" style="display:none"></div>
+    </div>
+    <div class="viewer" id="viewer">
+      <div class="viewer-left">
+        <div class="viewer-frame" id="viewerFrame" title="Click for full size">
+          <img id="frameImg" alt="" style="display:none">
+          <div class="empty" id="viewerEmpty">Select a shot to preview it here.<br><span style="color:var(--text-faint)">Arrow keys move between shots &middot; press ? for all shortcuts</span></div>
+          <div class="progress" id="viewerProgress"><i></i></div>
+        </div>
+        <div class="version-strip" id="versionStrip" title="Previous versions &mdash; click to make current"></div>
+      </div>
+      <div class="viewer-info">
+        <div class="viewer-actions" id="viewerActions" style="display:none">
+          <button id="genBtn" class="btn btn-accent" onclick="generateShot()">&#9889; Generate</button>
+          <button id="regenBtn" class="btn btn-accent" onclick="generateShot()">&#128260; Regenerate</button>
+          <button id="editBtn" class="btn" onclick="showEditPrompt()">&#9998; Edit image</button>
+          <select id="statusSelect" class="select" onchange="setStatus(this.value)">
+            <option value="">Set status&hellip;</option>
+            <option value="pending">pending</option>
+            <option value="curated">curated</option>
+            <option value="generated">generated</option>
+            <option value="approved">approved</option>
+            <option value="edited">edited</option>
+            <option value="selected">selected</option>
+          </select>
+          <button class="btn btn-danger" onclick="archiveShot()">Archive</button>
+        </div>
+        <div id="viewerInfo"></div>
+      </div>
+    </div>
   </div>
-  <div class="viewer-info" id="viewerInfo"></div>
 </div>
-</div>
+
+<!-- REFERENCES TAB -->
+<div id="tabRefs" class="content">
+  <div class="col">
+    <div class="toolbar">
+      <input id="refSearch" class="input" placeholder="Filter references&hellip;" oninput="renderRefs()" style="width:220px">
+      <select id="refCatFilter" class="select" onchange="renderRefs()"><option value="">All categories</option></select>
+      <button class="btn btn-accent" onclick="showRefGenerate()">+ New reference</button>
+    </div>
+    <div class="cards" id="refsGrid"></div>
+  </div>
 </div>
 
 <!-- ARCHIVE TAB -->
-<div id="tabArchive" class="content" style="display:none">
-<div class="refs-layout">
-<div class="refs-toolbar">
-  <span style="color:var(--text-dim);font-size:13px">Archived shots — click to restore</span>
-</div>
-<div class="refs-grid" id="archiveGrid" style="display:flex;flex-wrap:wrap;gap:12px;padding:12px"></div>
-</div>
-</div>
-
-<!-- REFS TAB -->
-<div id="tabRefs" class="content" style="display:none">
-<div class="refs-layout">
-<div class="refs-toolbar">
-  <input id="refSearch" placeholder="Filter references…" oninput="renderRefs()">
-  <select id="refCatFilter" onchange="renderRefs()"><option value="">All categories</option></select>
-  <button onclick="showRefGenerate()">+ New Reference</button>
-</div>
-<div class="refs-grid" id="refsGrid"></div>
-</div>
+<div id="tabArchive" class="content">
+  <div class="col">
+    <div class="toolbar">
+      <span class="count">Archived shots keep their images and history. Restore returns a shot to the list.</span>
+    </div>
+    <div class="cards" id="archiveGrid"><div class="card-row" id="archiveRow"></div></div>
+  </div>
 </div>
 
 <!-- MODALS -->
-<div class="modal" id="createModal" onclick="event.target===this&&hideCreateForm()">
-<div class="modal-inner" onclick="event.stopPropagation()">
-<h3>New Shot</h3>
-<input id="newScene" placeholder="Scene Number (optional)" oninput="autoGenFilename()">
-<input id="newFile" placeholder="Output File (auto)" readonly>
-<input id="newLens" placeholder="Lens (e.g. 28mm)">
-<input id="newGens" placeholder="Generations" value="1" type="number" min="1" max="9">
-<select id="newStatus"><option>pending</option><option>curated</option></select>
-<textarea id="newInstr" placeholder="Instructions"></textarea>
-<div style="display:flex;gap:8px;justify-content:flex-end">
-<button onclick="hideCreateForm()">Cancel</button>
-<button class="btn-accent" onclick="createShot()">Create</button>
+<div class="modal" id="createModal">
+<div class="modal-inner">
+<h3>New shot</h3>
+<div class="field"><label for="newInstr">Instructions (required)</label>
+  <textarea id="newInstr" placeholder="What should this shot show?"></textarea>
+  <div class="err" id="newInstrErr">Instructions are required &mdash; the prompt is curated from them.</div>
+</div>
+<div class="field"><label for="newScene">Scene number</label>
+  <input id="newScene" placeholder="e.g. 42" oninput="autoGenFilename()">
+  <div class="hint" id="newSceneHint">Location, characters and fountain text auto-fill from the scene when known.</div>
+</div>
+<div class="field"><label for="newFile">Output file</label>
+  <input id="newFile" class="mono" readonly tabindex="-1">
+</div>
+<div class="field"><label for="newLens">Lens</label>
+  <input id="newLens" placeholder="28mm">
+</div>
+<div class="field"><label for="newGens">Variants to create</label>
+  <input id="newGens" value="1" type="number" min="1" max="9">
+</div>
+<div class="field"><label for="newStatus">Status</label>
+  <select id="newStatus"><option value="pending">pending</option><option value="curated">curated</option></select>
+</div>
+<div class="modal-foot">
+  <button class="btn" onclick="hideCreateForm()">Cancel</button>
+  <button class="btn btn-accent" onclick="createShot()">Create shot</button>
 </div>
 </div>
 </div>
 
-<div class="modal" id="editModal" onclick="event.target===this&&hideEditPrompt()">
-<div class="modal-inner" onclick="event.stopPropagation()">
-<h3>Image-to-Image Edit</h3>
-<textarea id="editInstr" placeholder="Describe the edit to apply…"></textarea>
-<div style="display:flex;gap:8px;justify-content:flex-end">
-<button onclick="hideEditPrompt()">Cancel</button>
-<button class="btn-accent" onclick="editShot()">Edit</button>
+<div class="modal" id="editModal">
+<div class="modal-inner">
+<h3>Image-to-image edit</h3>
+<div class="field"><label for="editInstr">What should change?</label>
+  <textarea id="editInstr" placeholder="e.g. remove the lamp on the nightstand; make the window darker"></textarea>
+  <div class="hint">Composition, lighting, palette and mood are preserved automatically. Takes 1&ndash;3 minutes.</div>
+  <div class="err" id="editInstrErr">Describe the edit first.</div>
+</div>
+<div class="modal-foot">
+  <button class="btn" onclick="hideEditPrompt()">Cancel</button>
+  <button class="btn btn-accent" onclick="editShot()">Start edit</button>
 </div>
 </div>
 </div>
 
-<div class="modal" id="refGenModal" onclick="event.target===this&&hideRefGenerate()">
-<div class="modal-inner" onclick="event.stopPropagation()">
-<h3>Generate Reference</h3>
-<input id="refGenCat" placeholder="Category (e.g. characters, locations)">
-<textarea id="refGenInstr" placeholder="Describe the reference image…"></textarea>
-<div style="display:flex;gap:8px;justify-content:flex-end">
-<button onclick="hideRefGenerate()">Cancel</button>
-<button class="btn-accent" onclick="generateRef()">Generate</button>
+<div class="modal" id="refGenModal">
+<div class="modal-inner">
+<h3>Generate reference</h3>
+<div class="field"><label for="refGenCat">Category</label>
+  <input id="refGenCat" placeholder="characters, locations, props&hellip;" list="refCatList">
+  <datalist id="refCatList"></datalist>
+</div>
+<div class="field"><label for="refGenInstr">Description (required)</label>
+  <textarea id="refGenInstr" placeholder="Describe the reference image&hellip;"></textarea>
+  <div class="err" id="refGenErr">A description is required.</div>
+</div>
+<div class="modal-foot">
+  <button class="btn" onclick="hideRefGenerate()">Cancel</button>
+  <button class="btn btn-accent" onclick="generateRef()">Generate</button>
 </div>
 </div>
 </div>
 
-<div class="modal" id="imageModal" onclick="this.classList.remove('open')">
-<img class="modal-full-img" id="fullImg" src="" alt="" onclick="event.stopPropagation()">
-</div>
-
-<div class="modal" id="editFieldModal" onclick="event.target===this&&hideFieldEdit()">
-<div class="modal-inner" onclick="event.stopPropagation()">
-<h3 id="editFieldLabel">Edit</h3>
-<textarea id="editFieldText" style="min-height:120px"></textarea>
-<div style="display:flex;gap:8px;justify-content:flex-end">
-<button onclick="hideFieldEdit()">Cancel</button>
-<button class="btn-accent" onclick="saveFieldEdit()">Save</button>
+<div class="modal" id="fieldModal">
+<div class="modal-inner">
+<h3 id="fieldModalLabel">Edit</h3>
+<div class="field"><textarea id="fieldModalText" style="min-height:130px"></textarea></div>
+<div class="modal-foot">
+  <button class="btn" onclick="hideFieldEdit()">Cancel</button>
+  <button class="btn btn-accent" onclick="saveFieldEdit()">Save</button>
 </div>
 </div>
 </div>
 
-<div class="toast" id="toast" onclick="this.classList.remove('show')"><span style="float:right;margin-left:12px;cursor:pointer;color:var(--text-dim)">&times;</span></div>
+<div class="modal" id="helpModal">
+<div class="modal-inner">
+<h3>Keyboard shortcuts</h3>
+<div class="kbd-list">
+  <span><kbd>&uarr;</kbd> <kbd>&darr;</kbd></span><span>Move between shots</span>
+  <kbd>a</kbd><span>Approve selected shot</span>
+  <kbd>g</kbd><span>Generate / regenerate selected shot</span>
+  <kbd>e</kbd><span>Edit selected shot's image</span>
+  <kbd>/</kbd><span>Focus the filter box</span>
+  <kbd>?</kbd><span>Show this help</span>
+  <kbd>Esc</kbd><span>Close any dialog</span>
+</div>
+<div class="modal-foot"><button class="btn" onclick="closeModal('helpModal')">Close</button></div>
+</div>
+</div>
 
+<div class="modal" id="imageModal">
+  <img class="modal-full-img" id="fullImg" alt="">
+</div>
+
+<div id="toasts"></div>
+<div id="jobs"></div>
 <script>
-var shots=[],refsData={},selectedIdx=-1,refsCat={},refsFlat=[],activeTab='shots',editField='',editFieldIdx=-1;
-var sortCol='scene_number',sortDir=1;
+'use strict';
+/* ============ State ============ */
+const S = {
+  shots: [],            // server (CSV) order — never sorted in place
+  refCats: {},
+  selectedKey: null,    // output_file, or 'row:N' for shots without one
+  displayedKeys: [],    // current grid order, for keyboard navigation
+  sortCol: 'shot_number',
+  sortDir: 1,
+  busyKeys: new Set(),  // shots with a generate/edit in flight
+  fieldEdit: null,      // {key, field}
+};
+const $ = id => document.getElementById(id);
+const SHOT_COLS = ['shot_number','scene_number','status','characters','location','lens','generation_method','iteration_count','estimated_cost','verbatim_instructions','output_file'];
+const COL_LABELS = {shot_number:'#',scene_number:'Sc',status:'Status',characters:'Characters',location:'Location',lens:'Lens',generation_method:'Method',iteration_count:'v',estimated_cost:'$',verbatim_instructions:'Instructions',output_file:'File'};
+const NUMERIC_COLS = new Set(['shot_number','scene_number','iteration_count','generation_number']);
 
-// ── Tabs ──
-function switchTab(t){
-  activeTab=t;
-  var tabs=document.querySelectorAll('.tab');
-  tabs[0].classList.toggle('active',t==='shots');
-  tabs[1].classList.toggle('active',t==='refs');
-  tabs[2].classList.toggle('active',t==='archive');
-  document.getElementById('tabShots').style.display=t==='shots'?'flex':'none';
-  document.getElementById('tabRefs').style.display=t==='refs'?'flex':'none';
-  document.getElementById('tabArchive').style.display=t==='archive'?'flex':'none';
-  if(t==='refs')renderRefs();
-  if(t==='archive')renderArchive();
-}
-// ── Toast ──
-function toast(msg,isErr){var t=document.getElementById('toast');t.innerHTML=msg;t.classList.add('show');t.classList.toggle('error',!!isErr);clearTimeout(t._to);if(isErr){t._to=null;}else{t._to=setTimeout(function(){t.classList.remove('show');},3000);}}
-// ── Data ──
-async function fetchShots(){var r=await fetch('/api/shots');shots=(await r.json()).shots;shots.sort(function(a,b){return(parseInt(a.shot_number)||0)-(parseInt(b.shot_number)||0);});await refreshFrames();renderStats();}
-async function refreshFrames(){
-  var r=await fetch('/api/frames'),d=await r.json();
-  for(var i=0;i<shots.length;i++){
-    var s=shots[i];
-    var f=d.frames[s.output_file||'']||d.frames_lower[(s.output_file||'').toLowerCase()];
-    s._frame_url=f?'/api/frame/'+encodeURIComponent(f):null;
+function keyFor(shot, serverIdx){ return shot.output_file ? shot.output_file : 'row:' + serverIdx; }
+function shotByKey(key){
+  for (let i = 0; i < S.shots.length; i++){
+    if (keyFor(S.shots[i], i) === key) return {shot: S.shots[i], idx: i};
   }
+  return null;
+}
+function payloadFor(key){
+  const found = shotByKey(key);
+  if (!found) return null;
+  return found.shot.output_file ? {output_file: found.shot.output_file} : {row_index: found.idx};
+}
+function esc(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escA(t){ return esc(t).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+/* ============ API helper ============ */
+async function api(path, body){
+  const opts = body !== undefined
+    ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}
+    : undefined;
+  let r;
+  try { r = await fetch(path, opts); }
+  catch (e) { throw new Error('Server unreachable — is shot_dash.py still running?'); }
+  let data = null;
+  try { data = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((data && data.error) || ('Request failed (HTTP ' + r.status + ')'));
+  return data || {};
+}
+
+/* ============ Toast queue ============ */
+function toast(msg, opts){
+  opts = opts || {};
+  const box = document.createElement('div');
+  box.className = 'toast' + (opts.error ? ' error' : '');
+  const m = document.createElement('span');
+  m.className = 'msg'; m.textContent = msg;
+  box.appendChild(m);
+  if (opts.actionLabel && opts.onAction){
+    const a = document.createElement('button');
+    a.className = 'act'; a.textContent = opts.actionLabel;
+    a.onclick = () => { box.remove(); opts.onAction(); };
+    box.appendChild(a);
+  }
+  const x = document.createElement('button');
+  x.className = 'x'; x.textContent = '\u00d7'; x.title = 'Dismiss';
+  x.onclick = () => box.remove();
+  box.appendChild(x);
+  $('toasts').appendChild(box);
+  while ($('toasts').children.length > 4) $('toasts').firstChild.remove();
+  if (!opts.error){
+    setTimeout(() => box.remove(), opts.timeout || (opts.actionLabel ? 8000 : 3500));
+  }
+  return box;
+}
+
+/* ============ Job chips (long-running API calls) ============ */
+function startJob(label, key){
+  if (key) S.busyKeys.add(key);
+  const chip = document.createElement('div');
+  chip.className = 'job';
+  chip.innerHTML = '<span class="dot"></span><span></span><span class="t">0s</span>';
+  chip.children[1].textContent = label;
+  $('jobs').appendChild(chip);
+  const t0 = Date.now();
+  const tick = setInterval(() => {
+    const s = Math.round((Date.now() - t0) / 1000);
+    chip.querySelector('.t').textContent = (s >= 60 ? Math.floor(s/60) + 'm ' + (s%60) + 's' : s + 's');
+  }, 1000);
+  syncBusyUI();
+  return function endJob(){
+    clearInterval(tick);
+    chip.remove();
+    if (key) S.busyKeys.delete(key);
+    syncBusyUI();
+  };
+}
+function syncBusyUI(){
+  const sel = S.selectedKey;
+  const busy = sel != null && S.busyKeys.has(sel);
+  $('viewerProgress').classList.toggle('on', busy);
+  ['genBtn','regenBtn','editBtn'].forEach(id => { $(id).disabled = busy; });
+}
+
+/* ============ Tabs ============ */
+function switchTab(t){
+  $('tabBtnShots').classList.toggle('active', t === 'shots');
+  $('tabBtnRefs').classList.toggle('active', t === 'refs');
+  $('tabBtnArchive').classList.toggle('active', t === 'archive');
+  $('tabShots').classList.toggle('active', t === 'shots');
+  $('tabRefs').classList.toggle('active', t === 'refs');
+  $('tabArchive').classList.toggle('active', t === 'archive');
+  if (t === 'refs') renderRefs();
+  if (t === 'archive') renderArchive();
+}
+
+/* ============ Data ============ */
+async function fetchShots(){
+  const [shotsRes, framesRes] = await Promise.all([api('/api/shots'), api('/api/frames')]);
+  S.shots = shotsRes.shots || [];
+  const frames = framesRes.frames || {}, framesLower = framesRes.frames_lower || {};
+  for (const s of S.shots){
+    const fn = s.output_file || '';
+    const rel = frames[fn] || framesLower[fn.toLowerCase()];
+    s._frame_url = rel ? '/api/frame/' + encodeURIComponent(rel) : null;
+  }
+  renderStats();
   renderGrid();
+  renderArchive();
 }
 async function fetchRefs(){
-  var r=await fetch('/api/refs'),d=await r.json();
-  refsCat=d.categories||{};refsFlat=d.images||[];
-  var sel=document.getElementById('refCatFilter');
-  sel.innerHTML='<option value="">All categories</option>';
-  Object.keys(refsCat).sort().forEach(function(c){sel.innerHTML+='<option value="'+c+'">'+c+'</option>';});
+  const d = await api('/api/refs');
+  S.refCats = d.categories || {};
+  const sel = $('refCatFilter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All categories</option>';
+  const dl = $('refCatList'); dl.innerHTML = '';
+  Object.keys(S.refCats).sort().forEach(c => {
+    const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o);
+    const d2 = document.createElement('option'); d2.value = c; dl.appendChild(d2);
+  });
+  sel.value = cur;
   renderRefs();
 }
+function refreshData(){
+  return Promise.all([fetchShots(), fetchRefs()]).then(() => {
+    if (S.selectedKey && shotByKey(S.selectedKey)) selectShot(S.selectedKey, true);
+    else clearViewer();
+  }).catch(e => toast(e.message, {error: true}));
+}
 function renderStats(){
-  function c(st){var n=0;for(var i=0;i<shots.length;i++){if(shots[i].status===st)n++;}return n;}
-  document.getElementById('stats').innerHTML='Shots: <span style="color:var(--green)">'+c('generated')+' gen</span> <span style="color:var(--accent)">'+c('approved')+' app</span> <span style="color:var(--red)">'+c('pending')+' pend</span> <span style="color:var(--text-dim)">'+c('edited')+' ed</span>';
+  const c = {};
+  for (const s of S.shots) c[s.status] = (c[s.status] || 0) + 1;
+  $('stats').innerHTML =
+    '<span><b style="color:var(--green)">' + (c.generated||0) + '</b> generated</span>' +
+    '<span><b style="color:var(--accent)">' + (c.approved||0) + '</b> approved</span>' +
+    '<span><b style="color:var(--purple)">' + (c.edited||0) + '</b> edited</span>' +
+    '<span><b>' + (c.pending||0) + '</b> pending</span>';
+  const n = c.archived || 0;
+  $('archCount').textContent = n ? '(' + n + ')' : '';
 }
-// ── Grid ──
-document.getElementById('grid').addEventListener('click',function(e){
-  var tr=e.target.closest('tr[data-file]');
-  if(tr){var fn=tr.getAttribute('data-file');clickShot(fn);}
-});
-var shotCols=['scene_number','shot_number','generation_number','status','characters','location','lens','generation_method','iteration_count','estimated_cost','verbatim_instructions','output_file'];
-function renderGrid(){
-  var q=(document.getElementById('search').value||'').toLowerCase();
-  var sf=document.getElementById('statusFilter').value;
-  var filtered=shots.filter(function(s){
-    if(s.status==='archived')return false;
-    if(sf&&s.status!==sf)return false;
-    if(!q)return true;
-    for(var i=0;i<shotCols.length;i++){var v=s[shotCols[i]]||'';if(v.toLowerCase().indexOf(q)>=0)return true;}
-    return false;
-  });
-  filtered.sort(function(a,b){
-    var av=(a[sortCol]||'').toString().toLowerCase(),bv=(b[sortCol]||'').toString().toLowerCase();
-    if(av<bv)return -sortDir;if(av>bv)return sortDir;return 0;
-  });
-  // Global numbering — display position, not stored value
-  for(var i=0;i<filtered.length;i++){filtered[i]._gNum=i+1;}
-  // Headers
-  var labels={scene_number:'Sc',shot_number:'#',generation_number:'Gen',status:'Status',characters:'Characters',location:'Location',lens:'Lens',generation_method:'Method',iteration_count:'v',estimated_cost:'$',verbatim_instructions:'Instructions',output_file:'File'};
-  thead.innerHTML='<tr>'+shotCols.map(function(c){return'<th onclick="sortBy(\''+c+'\')">'+(labels[c]||c)+(sortCol===c?(sortDir>0?' ▴':' ▾'):'')+'</th>';}).join('')+'</tr>';
-  grid.innerHTML=filtered.map(function(s,i){
-    var realIdx=shots.indexOf(s);
-    var fn=s.output_file||'';
-    return'<tr style="cursor:pointer" draggable="true" ondragstart="dragStart(event,'+realIdx+')" ondragover="dragOver(event)" ondrop="dropRow(event,'+realIdx+')" data-file="'+fn+'" class="'+(selectedIdx===realIdx?'selected':'')+'">'+
-      shotCols.map(function(c){
-        var v=s[c]||'';
-        if(c==='shot_number')v=s._gNum;
-        if(c==='verbatim_instructions')v=v.substring(0,60);
-        if(c==='output_file')v=v+' 📷';
-        return '<td>'+esc(v)+'</td>';
-      }).join('')+'</tr>';
-  }).join('');
-  document.getElementById('count').textContent=filtered.length+' shots';
+</script>
+<script>
+/* ============ Shot grid ============ */
+function statusPill(st){
+  const known = ['pending','curated','generated','approved','edited','selected','archived'];
+  const cls = known.includes(st) ? 'st-' + st : 'st-pending';
+  return '<span class="pill ' + cls + '">' + esc(st || 'pending') + '</span>';
 }
-function sortBy(c){if(sortCol===c)sortDir=-sortDir;else{sortCol=c;sortDir=1;}renderGrid();}
-// ── Drag ──
-var dragIdx=-1;
-function dragStart(e,i){dragIdx=i;e.dataTransfer.setData('text/plain','');e.dataTransfer.effectAllowed='move';}
-function dragOver(e){e.preventDefault();}
-function dropRow(e,realIdx){e.preventDefault();if(dragIdx<0||dragIdx===realIdx)return;var row=shots.splice(dragIdx,1)[0];shots.splice(realIdx,0,row);dragIdx=-1;renderGrid();saveReorder();}
-async function saveReorder(){
-  var order=shots.map(function(s){return s.output_file;});
-  await fetch('/api/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order:order})});
-}
-// ── Click handler (stable by output_file) ──
-function clickShot(fn){var idx=findShotByFile(fn);if(idx>=0)selectShot(idx);}
-// ── Select ──
-function selectShot(i){
-  selectedIdx=i;
-  var s=shots[i];if(!s){return;}
-  renderGrid();
-  // Clear previous frame
-  var fi=document.getElementById('frameImg');
-  fi.src='';fi.style.display='none';
-  document.getElementById('viewerEmpty').style.display='block';
-  var strip=document.getElementById('versionStrip');
-  if(strip)strip.innerHTML='';
-  // Populate info
-  var sh=s;
-  function esc2(t){return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-  renderVersionHistory(sh);
-  document.getElementById('viewerInfo').innerHTML=[
-    '<div class="row"><span class="label">Scene</span>'+esc2(sh.scene_number||'—')+' / Shot '+esc2(sh.shot_number||'—')+' (Gen '+esc2(sh.generation_number||'—')+')</div>',
-    '<div class="row"><span class="label">Characters</span>'+esc2(sh.characters||'—')+'</div>',
-    '<div class="row"><span class="label">Location</span>'+esc2(sh.location||'—')+'</div>',
-    '<div class="row"><span class="label">Lens</span>'+esc2(sh.lens||'—')+' · '+esc2(sh.aspect_ratio||'—')+' · '+esc2(sh.generation_method||'—')+' · v'+esc2(sh.iteration_count||'1')+' · '+esc2(sh.estimated_cost||'—')+'</div>',
-    '<div class="row"><span class="label">Endpoint</span>'+esc2(sh.endpoint||'—')+'</div>',
-    sh.fountain_text?'<div class="row"><span class="label">Fountain</span><span style="white-space:pre-wrap;font-style:italic">'+esc2(sh.fountain_text).substring(0,400)+'</span></div>':'',
-    '<div class="row"><span class="label">Curated</span><span class="editable" onclick="editField('+i+',\'curated_description\')">'+(sh.curated_description?esc2(sh.curated_description).substring(0,200):'—')+'</span></div>',
-    sh.prompt?'<div class="row"><span class="label">API Prompt</span><span style="white-space:pre-wrap">'+esc2(sh.prompt).substring(0,400)+'</span></div>':'',
-    '<div class="row"><span class="label">Instructions</span><span class="editable" onclick="editField('+i+',\'verbatim_instructions\')">'+(sh.verbatim_instructions?esc2(sh.verbatim_instructions).substring(0,200):'—')+'</span></div>',
-    sh.iteration_history?'<div class="row"><span class="label">Iterations</span><span style="white-space:pre-wrap;font-size:10px">'+esc2(sh.iteration_history).substring(0,500)+'</span></div>':'',
-    sh.output_file?'<div class="row"><span class="label">File</span>'+esc2(sh.output_file)+'</div>':''
-  ].join('');
-  // Show frame
-  if(sh._frame_url){
-    fi.src=sh._frame_url;fi.style.display='block';
-    document.getElementById('viewerEmpty').style.display='none';
+function compareShots(a, b){
+  const col = S.sortCol;
+  let av = a.s[col] || '', bv = b.s[col] || '';
+  if (NUMERIC_COLS.has(col)){
+    const an = parseFloat(av), bn = parseFloat(bv);
+    if (!isNaN(an) && !isNaN(bn)) return (an - bn) * S.sortDir;
   }
-  // Show/hide buttons
-  var st=sh.status||'';
-  document.getElementById('genBtn').style.display=(st==='pending'||st==='curated')?'inline-block':'none';
-  document.getElementById('regenBtn').style.display=(st==='generated'||st==='selected'||st==='edited'||st==='approved')?'inline-block':'none';
-  document.getElementById('editBtn').style.display=(st==='generated'||st==='selected'||st==='edited'||st==='approved')?'inline-block':'none';
-  document.getElementById('viewerActions').style.display='flex';
+  av = String(av).toLowerCase(); bv = String(bv).toLowerCase();
+  return av < bv ? -S.sortDir : av > bv ? S.sortDir : 0;
 }
-// ── Version history ──
-function renderVersionHistory(sh){
-  var strip=document.getElementById('versionStrip');
-  var hist=[];try{hist=JSON.parse(sh.version_history||'[]');}catch(e){}
-  if(!hist.length){strip.innerHTML='';return;}
-  strip.innerHTML=hist.map(function(fn,i){
-    return'<img src="/api/frame/'+encodeURIComponent(fn)+'" title="'+fn+'" onerror="this.style.display=\'none\'" onclick="swapVersion('+selectedIdx+',\''+fn+'\')">';
+function displayedShots(){
+  const q = ($('search').value || '').toLowerCase();
+  const sf = $('statusFilter').value;
+  const list = [];
+  S.shots.forEach((s, i) => {
+    if (s.status === 'archived') return;
+    if (sf && s.status !== sf) return;
+    if (q){
+      let hit = false;
+      for (const c of SHOT_COLS){ if (String(s[c] || '').toLowerCase().includes(q)){ hit = true; break; } }
+      if (!hit) return;
+    }
+    list.push({s, i, key: keyFor(s, i)});
+  });
+  list.sort(compareShots);
+  return list;
+}
+function renderGrid(){
+  const list = displayedShots();
+  S.displayedKeys = list.map(x => x.key);
+  const active = S.shots.filter(s => s.status !== 'archived').length;
+
+  $('thead').innerHTML = '<tr>' + SHOT_COLS.map(c =>
+    '<th onclick="sortBy(\'' + c + '\')">' + (COL_LABELS[c] || c) +
+    (S.sortCol === c ? (S.sortDir > 0 ? ' \u25b4' : ' \u25be') : '') + '</th>').join('') + '</tr>';
+
+  if (!list.length){
+    $('grid').innerHTML = '';
+    const e = $('gridEmpty');
+    e.style.display = 'block';
+    e.innerHTML = active === 0
+      ? '<div class="big">No shots yet</div>Create the first one to start the board.<br><br><button class="btn btn-accent" onclick="showCreateForm()">+ New shot</button>'
+      : '<div class="big">No shots match</div>Nothing matches the current filter.<br><br><button class="btn" onclick="clearFilters()">Clear filters</button>';
+    return;
+  }
+  $('gridEmpty').style.display = 'none';
+
+  $('grid').innerHTML = list.map(({s, i, key}) => {
+    const cells = SHOT_COLS.map(c => {
+      let v = s[c] || '';
+      if (c === 'status') return '<td>' + statusPill(v) + '</td>';
+      if (c === 'verbatim_instructions') v = String(v).substring(0, 80);
+      if (c === 'output_file') return '<td class="mono">' + esc(v) + (s._frame_url ? ' \ud83d\udcf7' : '') + '</td>';
+      return '<td>' + esc(v) + '</td>';
+    }).join('');
+    return '<tr draggable="true" data-key="' + escA(key) + '"' +
+      (S.selectedKey === key ? ' class="selected"' : '') + '>' + cells + '</tr>';
   }).join('');
+  $('count').textContent = list.length === active ? active + ' shots' : list.length + ' of ' + active + ' shots';
 }
-async function swapVersion(idx,swapFile){
-  var fn=shots[idx].output_file;
-  var r=await fetch('/api/swap_version',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn,swap_file:swapFile})});
-  if(r.ok){var d=await r.json();toast('Swapped to '+swapFile);refreshData();}
-  else{var e=await r.json();toast(e.error||'Swap failed',true);}
+function sortBy(c){
+  if (S.sortCol === c) S.sortDir = -S.sortDir; else { S.sortCol = c; S.sortDir = 1; }
+  renderGrid();
 }
-// ── Actions ──
-async function updateStatus(newStatus){
-  if(selectedIdx<0)return;
-  await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx,status:newStatus})});
-  toast('→ '+newStatus);refreshData();
+function clearFilters(){ $('search').value = ''; $('statusFilter').value = ''; renderGrid(); }
+
+/* Row clicks + drag reorder (event delegation, no inline escaping) */
+$('grid').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-key]');
+  if (tr) selectShot(tr.getAttribute('data-key'));
+});
+let dragKey = null;
+$('grid').addEventListener('dragstart', e => {
+  const tr = e.target.closest('tr[data-key]');
+  if (!tr) return;
+  dragKey = tr.getAttribute('data-key');
+  tr.classList.add('dragging');
+  e.dataTransfer.setData('text/plain', '');
+  e.dataTransfer.effectAllowed = 'move';
+});
+$('grid').addEventListener('dragend', e => {
+  document.querySelectorAll('#grid tr').forEach(tr => tr.classList.remove('dragging','drop-target'));
+});
+$('grid').addEventListener('dragover', e => {
+  e.preventDefault();
+  const tr = e.target.closest('tr[data-key]');
+  document.querySelectorAll('#grid tr.drop-target').forEach(t => t.classList.remove('drop-target'));
+  if (tr && tr.getAttribute('data-key') !== dragKey) tr.classList.add('drop-target');
+});
+$('grid').addEventListener('drop', async e => {
+  e.preventDefault();
+  const tr = e.target.closest('tr[data-key]');
+  if (!tr || !dragKey) return;
+  const targetKey = tr.getAttribute('data-key');
+  if (targetKey === dragKey) return;
+  const order = S.displayedKeys.slice();
+  const from = order.indexOf(dragKey), to = order.indexOf(targetKey);
+  if (from < 0 || to < 0) return;
+  order.splice(to, 0, order.splice(from, 1)[0]);
+  const files = order.map(k => { const f = shotByKey(k); return f ? (f.shot.output_file || '') : ''; }).filter(Boolean);
+  dragKey = null;
+  try {
+    await api('/api/reorder', {order: files});
+    S.sortCol = 'shot_number'; S.sortDir = 1;
+    await refreshData();
+    toast('Order saved');
+  } catch (err){ toast(err.message, {error: true}); }
+});
+
+/* ============ Viewer ============ */
+const VIEWER_EMPTY_DEFAULT = document.getElementById('viewerEmpty').innerHTML;
+function clearViewer(){
+  S.selectedKey = null;
+  $('viewerEmpty').innerHTML = VIEWER_EMPTY_DEFAULT;
+  $('frameImg').style.display = 'none'; $('frameImg').src = '';
+  $('viewerEmpty').style.display = 'block';
+  $('viewerActions').style.display = 'none';
+  $('viewerInfo').innerHTML = '';
+  $('versionStrip').innerHTML = '';
+  syncBusyUI();
 }
-async function regenerateShot(){
-  if(selectedIdx<0)return;
-  var fn=shots[selectedIdx].output_file;
-  var btn=document.getElementById('regenBtn');btn.disabled=true;btn.textContent='Regenerating...';
-  var r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
-  btn.disabled=false;btn.textContent='🔄 Regenerate';
-  if(r.ok){var d=await r.json();toast('Regenerated: '+d.output_file+' (v'+d.version+')');refreshData();}
-  else{var e=await r.json();toast(e.error||'Regenerate failed',true);}
+function infoRow(label, html){ return '<div class="row"><span class="label">' + label + '</span>' + html + '</div>'; }
+function editableSpan(key, field, value, placeholder){
+  return '<span class="editable" data-field="' + escA(field) + '" data-key="' + escA(key) + '" title="Click to edit">' +
+    (value ? esc(String(value).substring(0, 240)) : (placeholder || '\u2014')) + '</span>';
+}
+function selectShot(key, keepScroll){
+  const found = shotByKey(key);
+  if (!found) return;
+  S.selectedKey = key;
+  renderGrid();
+  const s = found.shot;
+  const img = $('frameImg');
+  if (s._frame_url){
+    img.src = s._frame_url; img.style.display = 'block';
+    $('viewerEmpty').style.display = 'none';
+  } else {
+    img.style.display = 'none'; img.src = '';
+    $('viewerEmpty').style.display = 'block';
+    $('viewerEmpty').innerHTML = (s.status === 'pending' || s.status === 'curated')
+      ? 'No image yet \u2014 press <b>Generate</b> (or <kbd>g</kbd>) to render this shot.'
+      : 'Image file not found on disk: <span class="mono">' + esc(s.output_file || '?') + '</span>';
+  }
+  renderVersionStrip(s);
+  const meta = [esc(s.lens || '\u2014'), esc(s.aspect_ratio || '\u2014'), esc(s.generation_method || '\u2014'),
+                'v' + esc(s.iteration_count || '1'), esc(s.estimated_cost || '\u2014')].join(' \u00b7 ');
+  $('viewerInfo').innerHTML = [
+    infoRow('Scene / Shot', esc(s.scene_number || '\u2014') + ' / ' + esc(s.shot_number || '\u2014') + ' &nbsp; ' + statusPill(s.status)),
+    infoRow('Characters', esc(s.characters || '\u2014')),
+    infoRow('Location', esc(s.location || '\u2014')),
+    infoRow('Camera', meta),
+    s.fountain_text ? infoRow('Fountain', '<span style="white-space:pre-wrap;font-style:italic;color:var(--text-dim)">' + esc(String(s.fountain_text).substring(0, 400)) + '</span>') : '',
+    infoRow('Curated', editableSpan(key, 'curated_description', s.curated_description)),
+    infoRow('Instructions', editableSpan(key, 'verbatim_instructions', s.verbatim_instructions)),
+    s.prompt ? infoRow('API prompt', '<span style="white-space:pre-wrap;color:var(--text-dim)">' + esc(String(s.prompt).substring(0, 400)) + '</span>') : '',
+    s.output_file ? infoRow('File', '<span class="mono">' + esc(s.output_file) + '</span>') : ''
+  ].join('');
+  const st = s.status || '';
+  const hasImage = !!s._frame_url;
+  $('genBtn').style.display = (!hasImage) ? 'inline-block' : 'none';
+  $('regenBtn').style.display = hasImage ? 'inline-block' : 'none';
+  $('editBtn').style.display = hasImage ? 'inline-block' : 'none';
+  $('statusSelect').value = '';
+  $('viewerActions').style.display = 'flex';
+  syncBusyUI();
+  if (!keepScroll){
+    const row = document.querySelector('#grid tr.selected');
+    if (row) row.scrollIntoView({block: 'nearest'});
+  }
+}
+$('viewerFrame').addEventListener('click', () => {
+  const found = S.selectedKey && shotByKey(S.selectedKey);
+  if (found && found.shot._frame_url){
+    $('fullImg').src = found.shot._frame_url;
+    $('imageModal').classList.add('open');
+  }
+});
+$('viewerInfo').addEventListener('click', e => {
+  const el = e.target.closest('.editable');
+  if (el) openFieldEdit(el.getAttribute('data-key'), el.getAttribute('data-field'));
+});
+
+/* ============ Version history ============ */
+function renderVersionStrip(s){
+  let hist = [];
+  try { hist = JSON.parse(s.version_history || '[]'); } catch (e) {}
+  $('versionStrip').innerHTML = hist.map(fn =>
+    '<img src="/api/frame/' + encodeURIComponent(fn) + '" title="' + escA(fn) + ' \u2014 click to make current" data-swap="' + escA(fn) + '" onerror="this.remove()">'
+  ).join('');
+}
+$('versionStrip').addEventListener('click', async e => {
+  const el = e.target.closest('img[data-swap]');
+  if (!el || !S.selectedKey) return;
+  const p = payloadFor(S.selectedKey);
+  if (!p) return;
+  try {
+    const d = await api('/api/swap_version', Object.assign({swap_file: el.getAttribute('data-swap')}, p));
+    S.selectedKey = d.current;
+    toast('Now showing ' + d.current);
+    refreshData();
+  } catch (err){ toast(err.message, {error: true}); }
+});
+</script>
+<script>
+/* ============ Shot actions ============ */
+async function setStatus(st){
+  if (!st || !S.selectedKey) return;
+  const p = payloadFor(S.selectedKey);
+  if (!p) return;
+  try {
+    await api('/api/update', Object.assign({field: 'status', value: st}, p));
+    toast('Status \u2192 ' + st);
+    refreshData();
+  } catch (e){ toast(e.message, {error: true}); }
 }
 async function generateShot(){
-  if(selectedIdx<0)return;
-  var fn=shots[selectedIdx].output_file;
-  var btn=document.getElementById('genBtn');btn.disabled=true;btn.textContent='Generating...';
-  var r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
-  btn.disabled=false;btn.textContent='⚡ Generate';
-  if(r.ok){var d=await r.json();toast('Generated: '+d.output_file+' (v'+d.version+')');refreshData();}
-  else{var e=await r.json();toast(e.error||'Generate failed',true);}
+  if (!S.selectedKey) return;
+  const key = S.selectedKey;
+  if (S.busyKeys.has(key)) return;
+  const found = shotByKey(key);
+  const p = payloadFor(key);
+  if (!found || !p) return;
+  const label = (found.shot._frame_url ? 'Regenerating' : 'Generating') + ' sc ' + (found.shot.scene_number || '?');
+  const end = startJob(label, key);
+  try {
+    const d = await api('/api/generate', p);
+    S.selectedKey = d.output_file;   // identity moves to the new version
+    toast('Generated ' + d.output_file + ' (v' + d.version + ', ' + d.size_kb + ' KB)');
+    await refreshData();
+  } catch (e){
+    toast(e.message, {error: true});
+  } finally { end(); }
 }
-// ── Create ──
-function showCreateForm(){document.getElementById('createModal').classList.add('open');}
-function hideCreateForm(){document.getElementById('createModal').classList.remove('open');}
+function showEditPrompt(){
+  if (!S.selectedKey) return;
+  $('editInstrErr').classList.remove('on');
+  $('editInstr').classList.remove('invalid');
+  openModal('editModal');
+  $('editInstr').focus();
+}
+function hideEditPrompt(){ closeModal('editModal'); }
+async function editShot(){
+  const instr = $('editInstr').value.trim();
+  if (!instr){
+    $('editInstrErr').classList.add('on');
+    $('editInstr').classList.add('invalid');
+    return;
+  }
+  const key = S.selectedKey;
+  const found = key && shotByKey(key);
+  const p = key && payloadFor(key);
+  if (!found || !p) return;
+  hideEditPrompt();
+  $('editInstr').value = '';
+  const end = startJob('Editing sc ' + (found.shot.scene_number || '?'), key);
+  try {
+    const d = await api('/api/edit', Object.assign({edit_instructions: instr}, p));
+    S.selectedKey = d.output_file;
+    toast('Edited \u2192 ' + d.output_file + ' (v' + d.version + ')');
+    await refreshData();
+  } catch (e){
+    toast(e.message, {error: true});
+  } finally { end(); }
+}
+async function archiveShot(){
+  if (!S.selectedKey) return;
+  const p = payloadFor(S.selectedKey);
+  const found = shotByKey(S.selectedKey);
+  if (!p || !found) return;
+  try {
+    const d = await api('/api/archive', p);
+    const file = found.shot.output_file || '';
+    clearViewer();
+    await refreshData();
+    toast('Shot archived', {
+      actionLabel: 'Undo',
+      onAction: async () => {
+        try {
+          await api('/api/unarchive', Object.assign({restore_status: d.previous_status}, p));
+          await refreshData();
+          if (file) selectShot(file);
+        } catch (e){ toast(e.message, {error: true}); }
+      }
+    });
+  } catch (e){ toast(e.message, {error: true}); }
+}
+
+/* ============ Create shot ============ */
+function showCreateForm(){
+  $('newInstrErr').classList.remove('on');
+  $('newInstr').classList.remove('invalid');
+  autoGenFilename();
+  openModal('createModal');
+  $('newInstr').focus();
+}
+function hideCreateForm(){ closeModal('createModal'); }
 function autoGenFilename(){
-  var sc=document.getElementById('newScene').value.trim();
-  var fn=sc?'waif_sc_'+sc+'.png':'waif_sc_NN.png';
-  document.getElementById('newFile').value=fn;
+  const sc = $('newScene').value.trim();
+  $('newFile').value = sc ? 'waif_sc_' + sc + '_v1.png' : 'waif_sc_NN_v1.png';
+  const known = sc && (parseInt(sc, 10) >= 1 && parseInt(sc, 10) <= 278);
+  $('newSceneHint').textContent = known
+    ? 'Location, characters and fountain text auto-fill from scene ' + sc + '.'
+    : 'Unknown scene \u2014 location will be inferred from the instructions.';
 }
 async function createShot(){
-  var sc=document.getElementById('newScene').value.trim();
-  var fname=document.getElementById('newFile').value.trim();
-  var lens=document.getElementById('newLens').value.trim();
-  var gens=parseInt(document.getElementById('newGens').value)||1;
-  var instr=document.getElementById('newInstr').value.trim();
-  var status=document.getElementById('newStatus').value;
-  for(var g=0;g<gens;g++){
-    var fn=g===0?fname:fname.replace(/(\.[^.]+)$/,'_v'+(g+1)+'$1');
-    await fetch('/api/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_number:sc,output_file:fn,lens:lens||'28mm',verbatim_instructions:instr,status:status})});
+  const instr = $('newInstr').value.trim();
+  if (!instr){
+    $('newInstrErr').classList.add('on');
+    $('newInstr').classList.add('invalid');
+    $('newInstr').focus();
+    return;
   }
-  toast('Created '+(gens>1?gens+' shots':'shot'));hideCreateForm();refreshData();
-}
-// ── Edit ──
-function showEditPrompt(){document.getElementById('editModal').classList.add('open');document.getElementById('editInstr').focus();}
-function hideEditPrompt(){document.getElementById('editModal').classList.remove('open');}
-async function editShot(){
-  if(selectedIdx<0)return;
-  var fn=shots[selectedIdx].output_file;
-  var instr=document.getElementById('editInstr').value.trim();
-  if(!instr){toast('Enter edit instructions',true);return;}
-  hideEditPrompt();document.getElementById('editInstr').value='';
-  toast('Edit submitted — processing...');
-  var r=await fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn,edit_instructions:instr})});
-  if(r.ok){var d=await r.json();toast('Edited: '+d.output_file+' (v'+d.version+')');refreshData();}
-  else{var e=await r.json();toast(e.error||'Edit failed',true);}
-}
-// ── Inline field editing ──
-function editField(idx,field){
-  editFieldIdx=idx;editField=field;
-  if(idx<0||idx>=shots.length)return;
-  var val=shots[idx][field]||'';
-  document.getElementById('editFieldLabel').textContent='Edit '+field.replace(/_/g,' ');
-  document.getElementById('editFieldText').value=val;
-  document.getElementById('editFieldModal').classList.add('open');
-}
-function hideFieldEdit(){document.getElementById('editFieldModal').classList.remove('open');}
-async function saveFieldEdit(){
-  var val=document.getElementById('editFieldText').value;
-  if(editFieldIdx<0)return;
-  var fn=shots[editFieldIdx].output_file;
-  await fetch('/api/edit_text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn,field:editField,value:val})});
-  toast('Saved');hideFieldEdit();refreshData();
-}
-// ── Full image ──
-function openFullImage(){
-  if(selectedIdx<0)return;
-  var s=shots[selectedIdx];
-  if(s&&s._frame_url){
-    document.getElementById('fullImg').src=s._frame_url;
-    document.getElementById('imageModal').classList.add('open');
-  }
-}
-// ── Refs ──
-function renderRefs(){
-  var q=(document.getElementById('refSearch').value||'').toLowerCase();
-  var cf=document.getElementById('refCatFilter').value;
-  var grid=document.getElementById('refsGrid');
-  var html='';
-  var cats=Object.keys(refsCat).sort();
-  for(var c=0;c<cats.length;c++){
-    var cat=cats[c];
-    if(cf&&cat!==cf)continue;
-    var imgs=refsCat[cat];
-    var filtered=imgs;
-    if(q)filtered=imgs.filter(function(f){return f.toLowerCase().indexOf(q)>=0;});
-    if(!filtered.length)continue;
-    html+='<div class="ref-cat"><h3>'+cat+'</h3><div class="ref-cat-imgs">';
-    for(var j=0;j<filtered.length;j++){
-      var fn=filtered[j];
-      var label=fn.split('/').pop();
-      html+='<div class="ref-item"><img src="/api/ref/'+encodeURIComponent(fn)+'" title="'+fn+'" onclick="openRefModal(\''+fn+'\')" loading="lazy"><div class="ref-label">'+label+'</div></div>';
+  const sc = $('newScene').value.trim();
+  let fname = $('newFile').value.trim();
+  if (!fname || fname.indexOf('_NN_') >= 0) fname = 'waif_custom_' + Date.now() + '_v1.png';
+  const lens = $('newLens').value.trim() || '28mm';
+  const gens = Math.min(9, Math.max(1, parseInt($('newGens').value, 10) || 1));
+  const status = $('newStatus').value;
+  hideCreateForm();
+  try {
+    let firstFile = null;
+    for (let g = 0; g < gens; g++){
+      const fn = g === 0 ? fname : fname.replace(/(_v\d+)?(\.[^.]+)$/, '') + '_alt' + (g + 1) + '_v1.png';
+      const d = await api('/api/create', {scene_number: sc, output_file: fn, lens, verbatim_instructions: instr, status});
+      if (!firstFile) firstFile = d.row && d.row.output_file;
     }
-    html+='</div></div>';
+    toast(gens > 1 ? 'Created ' + gens + ' shots' : 'Shot created');
+    $('newInstr').value = ''; $('newScene').value = ''; autoGenFilename();
+    await refreshData();
+    if (firstFile) selectShot(firstFile);
+  } catch (e){ toast(e.message, {error: true}); }
+}
+
+/* ============ Inline field editing ============ */
+function openFieldEdit(key, field){
+  const found = shotByKey(key);
+  if (!found) return;
+  S.fieldEdit = {key, field};
+  $('fieldModalLabel').textContent = 'Edit ' + field.replace(/_/g, ' ');
+  $('fieldModalText').value = found.shot[field] || '';
+  openModal('fieldModal');
+  $('fieldModalText').focus();
+}
+function hideFieldEdit(){ S.fieldEdit = null; closeModal('fieldModal'); }
+async function saveFieldEdit(){
+  if (!S.fieldEdit) return;
+  const {key, field} = S.fieldEdit;
+  const p = payloadFor(key);
+  if (!p) return hideFieldEdit();
+  try {
+    await api('/api/edit_text', Object.assign({field, value: $('fieldModalText').value}, p));
+    hideFieldEdit();
+    toast('Saved');
+    refreshData();
+  } catch (e){ toast(e.message, {error: true}); }
+}
+
+/* ============ References ============ */
+function renderRefs(){
+  const q = ($('refSearch').value || '').toLowerCase();
+  const cf = $('refCatFilter').value;
+  const cats = Object.keys(S.refCats).sort();
+  let html = '', total = 0;
+  for (const cat of cats){
+    if (cf && cat !== cf) continue;
+    const imgs = (S.refCats[cat] || []).filter(f => !q || f.toLowerCase().includes(q));
+    if (!imgs.length) continue;
+    total += imgs.length;
+    html += '<div class="ref-cat"><h3>' + esc(cat) + '<span class="n">' + imgs.length + '</span></h3><div class="card-row">' +
+      imgs.map(fn => {
+        const label = fn.split('/').pop();
+        return '<div class="card"><div class="thumb">' +
+          '<img src="/api/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '" loading="lazy">' +
+          '<div class="acts">' +
+          '<button data-move="' + escA(fn) + '" title="Move to another category">\u2192</button>' +
+          '<button class="del" data-del="' + escA(fn) + '" title="Delete">\u00d7</button>' +
+          '</div></div><div class="name">' + esc(label) + '</div></div>';
+      }).join('') + '</div></div>';
   }
-  grid.innerHTML=html||'<div style="color:var(--text-dim);padding:20px">No references found</div>';
+  $('refsGrid').innerHTML = html ||
+    '<div class="empty-state"><div class="big">' + (q || cf ? 'No references match' : 'No references yet') + '</div>' +
+    (q || cf ? 'Try a different filter.' : 'Generate the first reference image for the look book.') +
+    '<br><br><button class="btn btn-accent" onclick="showRefGenerate()">+ New reference</button></div>';
 }
-function openRefModal(fn){
-  document.getElementById('fullImg').src='/api/ref/'+encodeURIComponent(fn);
-  document.getElementById('imageModal').classList.add('open');
+$('refsGrid').addEventListener('click', async e => {
+  const del = e.target.closest('[data-del]');
+  const move = e.target.closest('[data-move]');
+  const view = e.target.closest('[data-view]');
+  try {
+    if (del){
+      const fn = del.getAttribute('data-del');
+      if (!confirm('Delete reference ' + fn + '? This removes the file from disk.')) return;
+      await api('/api/ref_delete', {file: fn});
+      toast('Reference deleted');
+      fetchRefs();
+    } else if (move){
+      const fn = move.getAttribute('data-move');
+      const cat = prompt('Move ' + fn.split('/').pop() + ' to category:', fn.includes('/') ? fn.split('/')[0] : '');
+      if (!cat) return;
+      await api('/api/ref_move', {file: fn, category: cat.trim()});
+      toast('Moved to ' + cat.trim());
+      fetchRefs();
+    } else if (view){
+      $('fullImg').src = '/api/ref/' + encodeURIComponent(view.getAttribute('data-view'));
+      $('imageModal').classList.add('open');
+    }
+  } catch (err){ toast(err.message, {error: true}); }
+});
+function showRefGenerate(){
+  $('refGenErr').classList.remove('on');
+  $('refGenInstr').classList.remove('invalid');
+  openModal('refGenModal');
+  $('refGenInstr').focus();
 }
-function toggleRefs(){switchTab('refs');}
-function showRefGenerate(){document.getElementById('refGenModal').classList.add('open');}
-function hideRefGenerate(){document.getElementById('refGenModal').classList.remove('open');}
+function hideRefGenerate(){ closeModal('refGenModal'); }
 async function generateRef(){
-  var cat=document.getElementById('refGenCat').value.trim()||'misc';
-  var instr=document.getElementById('refGenInstr').value.trim();
-  if(!instr){toast('Enter description',true);return;}
-  hideRefGenerate();toast('Generating reference...');
-  var r=await fetch('/api/generate_ref',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({verbatim_instructions:instr,category:cat})});
-  if(r.ok){var d=await r.json();toast('Reference saved: '+d.file);fetchRefs();}
-  else{var e=await r.json();toast(e.error||'Reference generation failed',true);}
+  const instr = $('refGenInstr').value.trim();
+  if (!instr){
+    $('refGenErr').classList.add('on');
+    $('refGenInstr').classList.add('invalid');
+    return;
+  }
+  const cat = $('refGenCat').value.trim() || 'misc';
+  hideRefGenerate();
+  const end = startJob('Reference: ' + cat);
+  try {
+    const d = await api('/api/generate_ref', {verbatim_instructions: instr, category: cat});
+    toast('Reference saved: ' + d.file);
+    $('refGenInstr').value = '';
+    fetchRefs();
+  } catch (e){
+    toast(e.message, {error: true});
+  } finally { end(); }
 }
-// ── Archive ──
-async function archiveShot(){
-  if(selectedIdx<0)return;
-  var fn=shots[selectedIdx].output_file;
-  await fetch('/api/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
-  toast('Archived');selectedIdx=-1;refreshData();
-}
+</script>
+<script>
+/* ============ Archive ============ */
 function renderArchive(){
-  var archived=shots.filter(function(s){return s.status==='archived';});
-  var grid=document.getElementById('archiveGrid');
-  if(!archived.length){grid.innerHTML='<div style="color:var(--text-dim);padding:20px">No archived shots</div>';return;}
-  grid.innerHTML=archived.map(function(s){
-    var idx=shots.indexOf(s);
-    var url=s._frame_url||'/api/frame/'+encodeURIComponent(s.output_file||'');
-    var img=url?'<img src="'+url+'" style="width:160px;height:90px;object-fit:cover;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="unarchiveShot('+idx+')">':'<div style="width:160px;height:90px;border:1px solid var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">No image</div>';
-    return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div>'+img+'</div><div style="font-size:10px;color:var(--text-dim);text-align:center">'+(s.output_file||'').split('/').pop()+'</div><button onclick="unarchiveShot('+idx+')" style="font-size:11px;padding:2px 8px;background:var(--bg);color:var(--green);border:1px solid var(--border);border-radius:4px;cursor:pointer">↩ Restore</button></div>';
+  const archived = [];
+  S.shots.forEach((s, i) => { if (s.status === 'archived') archived.push({s, i, key: keyFor(s, i)}); });
+  if (!archived.length){
+    $('archiveRow').innerHTML = '<div class="empty-state" style="width:100%"><div class="big">Nothing archived</div>Archived shots will appear here and can be restored anytime.</div>';
+    return;
+  }
+  $('archiveRow').innerHTML = archived.map(({s, key}) => {
+    const img = s._frame_url
+      ? '<img src="' + escA(s._frame_url) + '" data-view-frame="' + escA(s._frame_url) + '" alt="">'
+      : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-faint)">No image</div>';
+    return '<div class="card"><div class="thumb">' + img + '</div>' +
+      '<div class="name">' + esc((s.output_file || 'untitled').split('/').pop()) + '</div>' +
+      '<button class="btn" data-restore="' + escA(key) + '">\u21a9 Restore</button></div>';
   }).join('');
 }
-async function unarchiveShot(idx){
-  var fn=shots[idx].output_file;
-  await fetch('/api/unarchive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
-  toast('Restored');refreshData();renderArchive();
-}
-// ── Find shot by output_file ──
-function findShotByFile(fn){for(var i=0;i<shots.length;i++){if(shots[i].output_file===fn)return i;}return -1;}
-// ── Refresh ──
-function refreshData(){
-  var selFile=selectedIdx>=0&&selectedIdx<shots.length?shots[selectedIdx].output_file:null;
-  fetchShots().then(function(){
-    if(selFile){var idx=findShotByFile(selFile);if(idx>=0)selectShot(idx);}
-  });
-}
-// ── Utilities ──
-function esc(t){return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-// ── Keyboard ──
-document.addEventListener('keydown',function(e){
-  if(e.key==='Escape'){hideCreateForm();hideEditPrompt();hideFieldEdit();hideRefGenerate();document.getElementById('imageModal').classList.remove('open');}
-  if(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA'||document.activeElement.tagName==='SELECT')return;
-  if(e.key==='ArrowDown'){e.preventDefault();if(selectedIdx<shots.length-1)selectShot(selectedIdx+1);}
-  if(e.key==='ArrowUp'){e.preventDefault();if(selectedIdx>0)selectShot(selectedIdx-1);}
-  if(e.key==='a'&&selectedIdx>=0)updateStatus('approved');
+$('archiveRow').addEventListener('click', async e => {
+  const res = e.target.closest('[data-restore]');
+  const view = e.target.closest('[data-view-frame]');
+  if (view){
+    $('fullImg').src = view.getAttribute('data-view-frame');
+    $('imageModal').classList.add('open');
+    return;
+  }
+  if (!res) return;
+  const p = payloadFor(res.getAttribute('data-restore'));
+  if (!p) return;
+  try {
+    const d = await api('/api/unarchive', p);
+    toast('Restored (' + d.status + ')');
+    await refreshData();
+    renderArchive();
+  } catch (err){ toast(err.message, {error: true}); }
 });
-// ── Init ──
-fetchShots();fetchRefs();
-// Viewer actions bar (inserted by JS into viewer div)
-(function(){
-  var v=document.getElementById('viewer');
-  var div=document.createElement('div');
-  div.id='viewerActions';
-  div.className='viewer-actions';
-  div.style.display='none';
-  div.innerHTML='<button id="genBtn" class="btn-accent" onclick="generateShot()" style="display:none">⚡ Generate</button><button id="regenBtn" class="btn-accent" onclick="regenerateShot()" style="display:none">🔄 Regenerate</button><button id="editBtn" class="btn-accent" onclick="showEditPrompt()" style="display:none;background:var(--accent-dim)!important;border-color:var(--accent)!important;color:var(--accent)!important">✏️ Edit</button><select id="statusSelect" onchange="updateStatus(this.value)" style="font-size:11px;padding:4px 8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px"><option value="">Set status…</option><option>pending</option><option>curated</option><option>generated</option><option>approved</option><option>edited</option><option>selected</option><option>archived</option></select><button onclick="archiveShot()" style="font-size:11px;padding:4px 10px;background:var(--bg);color:var(--red);border:1px solid var(--border);border-radius:4px;cursor:pointer">🗑 Archive</button><button onclick="refreshData()">↻ Refresh</button>';
-  v.appendChild(div);
-  // Version history strip
-  var strip=document.createElement('div');
-  strip.id='versionStrip';
-  strip.className='version-strip';
-  v.appendChild(strip);
-})();
+
+/* ============ Modals ============ */
+function openModal(id){ $(id).classList.add('open'); }
+function closeModal(id){ $(id).classList.remove('open'); }
+function openHelp(){ openModal('helpModal'); }
+function anyModalOpen(){ return !!document.querySelector('.modal.open'); }
+document.querySelectorAll('.modal').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+$('fullImg').addEventListener('click', () => closeModal('imageModal'));
+
+/* ============ Keyboard ============ */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){
+    document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+    S.fieldEdit = null;
+    return;
+  }
+  const tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (anyModalOpen()) return;
+  if (e.key === '/'){ e.preventDefault(); $('search').focus(); return; }
+  if (e.key === '?'){ e.preventDefault(); openHelp(); return; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    e.preventDefault();
+    const keys = S.displayedKeys;
+    if (!keys.length) return;
+    const cur = keys.indexOf(S.selectedKey);
+    const next = e.key === 'ArrowDown'
+      ? Math.min(keys.length - 1, cur < 0 ? 0 : cur + 1)
+      : Math.max(0, cur < 0 ? 0 : cur - 1);
+    selectShot(keys[next]);
+    return;
+  }
+  if (!S.selectedKey) return;
+  if (e.key === 'a') setStatus('approved');
+  if (e.key === 'g') generateShot();
+  if (e.key === 'e'){
+    const found = shotByKey(S.selectedKey);
+    if (found && found.shot._frame_url) showEditPrompt();
+  }
+});
+
+/* ============ Init ============ */
+refreshData();
 </script>
 </body>
 </html>

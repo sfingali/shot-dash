@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shot Dash</title>
+<style>
+:root{--bg:#0d0d0d;--surface:#1a1a1a;--border:#2a2a2a;--text:#ddd;--text-dim:#888;--accent:#f0c040;--accent-dim:#3a3020;--red:#e04040;--green:#40c040}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:13px/1.5 system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.banner{display:flex;align-items:center;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--border);gap:12px;flex-shrink:0}
+.banner h1{font-size:16px;color:var(--accent)}
+.tabs{display:flex;gap:2px;margin-left:16px}
+.tab{padding:4px 14px;background:var(--bg);border:1px solid var(--border);border-radius:4px 4px 0 0;cursor:pointer;font-size:12px;color:var(--text-dim)}
+.tab.active{background:var(--surface);color:var(--accent);border-bottom-color:var(--surface)}
+.toolbar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
+.toolbar input,.toolbar select,.toolbar button{padding:4px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px}
+.toolbar button{cursor:pointer;font-weight:600}
+.toolbar button:hover{background:var(--accent-dim)}
+.btn-accent{background:var(--accent)!important;color:#000!important;border-color:var(--accent)!important}
+.content{flex:1;overflow:auto;display:flex;min-height:0}
+/* Shots tab */
+.shots-layout{display:flex;flex-direction:column;flex:1;min-height:0}
+.shot-grid-wrap{flex:1;overflow:auto;min-height:0}
+.shot-grid-wrap table{width:100%;border-collapse:collapse}
+.shot-grid-wrap th{position:sticky;top:0;background:var(--surface);color:var(--text-dim);font-size:11px;text-align:left;padding:4px 8px;border-bottom:2px solid var(--border);cursor:pointer;white-space:nowrap}
+.shot-grid-wrap td{padding:3px 8px;border-bottom:1px solid var(--border);font-size:12px;white-space:nowrap}
+.shot-grid-wrap tr{cursor:pointer}
+.shot-grid-wrap tr:hover{background:var(--accent-dim)}
+.shot-grid-wrap tr.selected{background:var(--accent-dim);outline:1px solid var(--accent)}
+/* Viewer panel */
+.viewer{flex-shrink:0;border-top:2px solid var(--border);background:var(--surface);display:flex;gap:12px;padding:8px 12px;overflow:hidden;max-height:45vh}
+.viewer-frame{flex-shrink:0;width:50%;position:relative;cursor:pointer;min-width:300px}
+.viewer-frame img{width:100%;height:auto;border-radius:4px;border:1px solid var(--border)}
+.viewer-frame .empty{color:var(--text-dim);font-size:14px;text-align:center;padding:40px 0}
+.viewer-info{flex:1;overflow-y:auto;font-size:12px;min-width:0}
+.viewer-info .row{margin-bottom:6px}
+.viewer-info .label{color:var(--text-dim);font-weight:600;display:inline-block;min-width:80px}
+.viewer-info .editable{cursor:pointer;border-bottom:1px dashed var(--border)}
+.viewer-info .editable:hover{color:var(--accent)}
+.viewer-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.viewer-actions button{padding:4px 12px;font-size:11px;font-weight:600;border-radius:4px;cursor:pointer;background:var(--bg);color:var(--text);border:1px solid var(--border)}
+.viewer-actions button:hover{background:var(--accent-dim)}
+.version-strip{display:flex;gap:4px;margin-top:8px;overflow-x:auto;padding:4px 0}
+.version-strip img{width:50px;height:24px;object-fit:cover;border:1px solid var(--border);border-radius:2px;cursor:pointer}
+.version-strip img:hover,.version-strip img.active{border-color:var(--accent)}
+/* Refs tab */
+.refs-layout{display:flex;flex-direction:column;flex:1;min-height:0}
+.refs-toolbar{display:flex;gap:8px;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
+.refs-toolbar input,.refs-toolbar select,.refs-toolbar button{padding:4px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;font-size:12px}
+.refs-toolbar button{cursor:pointer}
+.refs-grid{flex:1;overflow:auto;padding:12px;display:flex;flex-wrap:wrap;gap:12px;align-content:flex-start}
+.ref-cat{width:100%}
+.ref-cat h3{color:var(--accent);font-size:14px;margin:8px 0 4px;text-transform:capitalize}
+.ref-cat-imgs{display:flex;flex-wrap:wrap;gap:8px}
+.ref-cat-imgs img{width:160px;height:90px;object-fit:cover;border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:transform .15s}
+.ref-cat-imgs img:hover{transform:scale(1.05);border-color:var(--accent)}
+.ref-cat-imgs .ref-label{font-size:10px;color:var(--text-dim);text-align:center;margin-top:2px;word-break:break-all}
+.ref-item{display:flex;flex-direction:column;align-items:center}
+/* Modals */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:100;align-items:center;justify-content:center}
+.modal.open{display:flex}
+.modal-inner{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;max-width:520px;width:90%;max-height:90vh;overflow-y:auto}
+.modal-inner h3{color:var(--accent);margin:0 0 12px}
+.modal-inner textarea,.modal-inner input{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:8px;font-size:13px;margin-bottom:8px}
+.modal-inner textarea{resize:vertical;min-height:80px}
+.modal-inner button{padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;margin-right:6px}
+.modal-full-img{max-width:95vw;max-height:95vh;border-radius:4px}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--surface);border:1px solid var(--border);padding:10px 18px;border-radius:6px;z-index:300;font-size:13px;opacity:0;transition:opacity .3s}
+.toast.show{opacity:1}
+.toast.error{border-color:var(--red);color:var(--red)}
+@media(max-width:800px){.viewer{flex-direction:column}.viewer-frame{width:100%}}
+</style>
+</head>
+<body>
+<div class="banner">
+  <h1>🎬 Shot Dash</h1>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('shots')">Shots</button>
+    <button class="tab" onclick="switchTab('refs')">References</button>
+    <button class="tab" onclick="switchTab('archive')">Archive</button>
+  </div>
+  <span style="margin-left:auto;font-size:12px;color:var(--text-dim)" id="stats"></span>
+</div>
+
+<!-- SHOTS TAB -->
+<div id="tabShots" class="content">
+<div class="shots-layout">
+<div class="toolbar">
+  <input id="search" placeholder="Filter shots…" oninput="renderGrid()">
+  <select id="statusFilter" onchange="renderGrid()">
+    <option value="">All</option><option>Pending</option><option>Curated</option><option>Generated</option><option>Approved</option><option>Edited</option>
+  </select>
+  <button onclick="showCreateForm()">+ New Shot</button>
+  <button onclick="toggleRefs()">📷 Refs</button>
+  <span id="count" style="font-size:12px;color:var(--text-dim)">0 shots</span>
+</div>
+<div class="shot-grid-wrap">
+  <table><thead id="thead"></thead><tbody id="grid"></tbody></table>
+</div>
+<div class="viewer" id="viewer">
+  <div class="viewer-frame" id="viewerImage" onclick="openFullImage()" title="Click for full size">
+    <img id="frameImg" src="" alt="" style="display:none">
+    <div class="empty" id="viewerEmpty">← Select a shot</div>
+  </div>
+  <div class="viewer-info" id="viewerInfo"></div>
+</div>
+</div>
+</div>
+
+<!-- ARCHIVE TAB -->
+<div id="tabArchive" class="content" style="display:none">
+<div class="refs-layout">
+<div class="refs-toolbar">
+  <span style="color:var(--text-dim);font-size:13px">Archived shots — click to restore</span>
+</div>
+<div class="refs-grid" id="archiveGrid" style="display:flex;flex-wrap:wrap;gap:12px;padding:12px"></div>
+</div>
+</div>
+
+<!-- REFS TAB -->
+<div id="tabRefs" class="content" style="display:none">
+<div class="refs-layout">
+<div class="refs-toolbar">
+  <input id="refSearch" placeholder="Filter references…" oninput="renderRefs()">
+  <select id="refCatFilter" onchange="renderRefs()"><option value="">All categories</option></select>
+  <button onclick="showRefGenerate()">+ New Reference</button>
+</div>
+<div class="refs-grid" id="refsGrid"></div>
+</div>
+</div>
+
+<!-- MODALS -->
+<div class="modal" id="createModal" onclick="event.target===this&&hideCreateForm()">
+<div class="modal-inner" onclick="event.stopPropagation()">
+<h3>New Shot</h3>
+<input id="newScene" placeholder="Scene Number (optional)" oninput="autoGenFilename()">
+<input id="newFile" placeholder="Output File (auto)" readonly>
+<input id="newLens" placeholder="Lens (e.g. 28mm)">
+<input id="newGens" placeholder="Generations" value="1" type="number" min="1" max="9">
+<select id="newStatus"><option>pending</option><option>curated</option></select>
+<textarea id="newInstr" placeholder="Instructions"></textarea>
+<div style="display:flex;gap:8px;justify-content:flex-end">
+<button onclick="hideCreateForm()">Cancel</button>
+<button class="btn-accent" onclick="createShot()">Create</button>
+</div>
+</div>
+</div>
+
+<div class="modal" id="editModal" onclick="event.target===this&&hideEditPrompt()">
+<div class="modal-inner" onclick="event.stopPropagation()">
+<h3>Image-to-Image Edit</h3>
+<textarea id="editInstr" placeholder="Describe the edit to apply…"></textarea>
+<div style="display:flex;gap:8px;justify-content:flex-end">
+<button onclick="hideEditPrompt()">Cancel</button>
+<button class="btn-accent" onclick="editShot()">Edit</button>
+</div>
+</div>
+</div>
+
+<div class="modal" id="refGenModal" onclick="event.target===this&&hideRefGenerate()">
+<div class="modal-inner" onclick="event.stopPropagation()">
+<h3>Generate Reference</h3>
+<input id="refGenCat" placeholder="Category (e.g. characters, locations)">
+<textarea id="refGenInstr" placeholder="Describe the reference image…"></textarea>
+<div style="display:flex;gap:8px;justify-content:flex-end">
+<button onclick="hideRefGenerate()">Cancel</button>
+<button class="btn-accent" onclick="generateRef()">Generate</button>
+</div>
+</div>
+</div>
+
+<div class="modal" id="imageModal" onclick="this.classList.remove('open')">
+<img class="modal-full-img" id="fullImg" src="" alt="" onclick="event.stopPropagation()">
+</div>
+
+<div class="modal" id="editFieldModal" onclick="event.target===this&&hideFieldEdit()">
+<div class="modal-inner" onclick="event.stopPropagation()">
+<h3 id="editFieldLabel">Edit</h3>
+<textarea id="editFieldText" style="min-height:120px"></textarea>
+<div style="display:flex;gap:8px;justify-content:flex-end">
+<button onclick="hideFieldEdit()">Cancel</button>
+<button class="btn-accent" onclick="saveFieldEdit()">Save</button>
+</div>
+</div>
+</div>
+
+<div class="toast" id="toast" onclick="this.classList.remove('show')"><span style="float:right;margin-left:12px;cursor:pointer;color:var(--text-dim)">&times;</span></div>
+
+<script>
+var shots=[],refsData={},selectedIdx=-1,refsCat={},refsFlat=[],activeTab='shots',editField='',editFieldIdx=-1;
+var sortCol='scene_number',sortDir=1;
+
+// ── Tabs ──
+function switchTab(t){
+  activeTab=t;
+  var tabs=document.querySelectorAll('.tab');
+  tabs[0].classList.toggle('active',t==='shots');
+  tabs[1].classList.toggle('active',t==='refs');
+  tabs[2].classList.toggle('active',t==='archive');
+  document.getElementById('tabShots').style.display=t==='shots'?'flex':'none';
+  document.getElementById('tabRefs').style.display=t==='refs'?'flex':'none';
+  document.getElementById('tabArchive').style.display=t==='archive'?'flex':'none';
+  if(t==='refs')renderRefs();
+  if(t==='archive')renderArchive();
+}
+// ── Toast ──
+function toast(msg,isErr){var t=document.getElementById('toast');t.innerHTML=msg;t.classList.add('show');t.classList.toggle('error',!!isErr);clearTimeout(t._to);if(isErr){t._to=null;}else{t._to=setTimeout(function(){t.classList.remove('show');},3000);}}
+// ── Data ──
+async function fetchShots(){var r=await fetch('/api/shots');shots=(await r.json()).shots;shots.sort(function(a,b){return(parseInt(a.shot_number)||0)-(parseInt(b.shot_number)||0);});await refreshFrames();renderStats();}
+async function refreshFrames(){
+  var r=await fetch('/api/frames'),d=await r.json();
+  for(var i=0;i<shots.length;i++){
+    var s=shots[i];
+    var f=d.frames[s.output_file||'']||d.frames_lower[(s.output_file||'').toLowerCase()];
+    s._frame_url=f?'/api/frame/'+encodeURIComponent(f):null;
+  }
+  renderGrid();
+}
+async function fetchRefs(){
+  var r=await fetch('/api/refs'),d=await r.json();
+  refsCat=d.categories||{};refsFlat=d.images||[];
+  var sel=document.getElementById('refCatFilter');
+  sel.innerHTML='<option value="">All categories</option>';
+  Object.keys(refsCat).sort().forEach(function(c){sel.innerHTML+='<option value="'+c+'">'+c+'</option>';});
+  renderRefs();
+}
+function renderStats(){
+  function c(st){var n=0;for(var i=0;i<shots.length;i++){if(shots[i].status===st)n++;}return n;}
+  document.getElementById('stats').innerHTML='Shots: <span style="color:var(--green)">'+c('generated')+' gen</span> <span style="color:var(--accent)">'+c('approved')+' app</span> <span style="color:var(--red)">'+c('pending')+' pend</span> <span style="color:var(--text-dim)">'+c('edited')+' ed</span>';
+}
+// ── Grid ──
+document.getElementById('grid').addEventListener('click',function(e){
+  var tr=e.target.closest('tr[data-file]');
+  if(tr){var fn=tr.getAttribute('data-file');clickShot(fn);}
+});
+var shotCols=['scene_number','shot_number','generation_number','status','characters','location','lens','generation_method','iteration_count','estimated_cost','verbatim_instructions','output_file'];
+function renderGrid(){
+  var q=(document.getElementById('search').value||'').toLowerCase();
+  var sf=document.getElementById('statusFilter').value;
+  var filtered=shots.filter(function(s){
+    if(s.status==='archived')return false;
+    if(sf&&s.status!==sf)return false;
+    if(!q)return true;
+    for(var i=0;i<shotCols.length;i++){var v=s[shotCols[i]]||'';if(v.toLowerCase().indexOf(q)>=0)return true;}
+    return false;
+  });
+  filtered.sort(function(a,b){
+    var av=(a[sortCol]||'').toString().toLowerCase(),bv=(b[sortCol]||'').toString().toLowerCase();
+    if(av<bv)return -sortDir;if(av>bv)return sortDir;return 0;
+  });
+  // Global numbering — display position, not stored value
+  for(var i=0;i<filtered.length;i++){filtered[i]._gNum=i+1;}
+  // Headers
+  var labels={scene_number:'Sc',shot_number:'#',generation_number:'Gen',status:'Status',characters:'Characters',location:'Location',lens:'Lens',generation_method:'Method',iteration_count:'v',estimated_cost:'$',verbatim_instructions:'Instructions',output_file:'File'};
+  thead.innerHTML='<tr>'+shotCols.map(function(c){return'<th onclick="sortBy(\''+c+'\')">'+(labels[c]||c)+(sortCol===c?(sortDir>0?' ▴':' ▾'):'')+'</th>';}).join('')+'</tr>';
+  grid.innerHTML=filtered.map(function(s,i){
+    var realIdx=shots.indexOf(s);
+    var fn=s.output_file||'';
+    return'<tr style="cursor:pointer" draggable="true" ondragstart="dragStart(event,'+realIdx+')" ondragover="dragOver(event)" ondrop="dropRow(event,'+realIdx+')" data-file="'+fn+'" class="'+(selectedIdx===realIdx?'selected':'')+'">'+
+      shotCols.map(function(c){
+        var v=s[c]||'';
+        if(c==='shot_number')v=s._gNum;
+        if(c==='verbatim_instructions')v=v.substring(0,60);
+        if(c==='output_file')v=v+' 📷';
+        return '<td>'+esc(v)+'</td>';
+      }).join('')+'</tr>';
+  }).join('');
+  document.getElementById('count').textContent=filtered.length+' shots';
+}
+function sortBy(c){if(sortCol===c)sortDir=-sortDir;else{sortCol=c;sortDir=1;}renderGrid();}
+// ── Drag ──
+var dragIdx=-1;
+function dragStart(e,i){dragIdx=i;e.dataTransfer.setData('text/plain','');e.dataTransfer.effectAllowed='move';}
+function dragOver(e){e.preventDefault();}
+function dropRow(e,realIdx){e.preventDefault();if(dragIdx<0||dragIdx===realIdx)return;var row=shots.splice(dragIdx,1)[0];shots.splice(realIdx,0,row);dragIdx=-1;renderGrid();saveReorder();}
+async function saveReorder(){
+  var order=shots.map(function(s){return s.output_file;});
+  await fetch('/api/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order:order})});
+}
+// ── Click handler (stable by output_file) ──
+function clickShot(fn){var idx=findShotByFile(fn);if(idx>=0)selectShot(idx);}
+// ── Select ──
+function selectShot(i){
+  selectedIdx=i;
+  var s=shots[i];if(!s){return;}
+  renderGrid();
+  // Clear previous frame
+  var fi=document.getElementById('frameImg');
+  fi.src='';fi.style.display='none';
+  document.getElementById('viewerEmpty').style.display='block';
+  var strip=document.getElementById('versionStrip');
+  if(strip)strip.innerHTML='';
+  // Populate info
+  var sh=s;
+  function esc2(t){return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  renderVersionHistory(sh);
+  document.getElementById('viewerInfo').innerHTML=[
+    '<div class="row"><span class="label">Scene</span>'+esc2(sh.scene_number||'—')+' / Shot '+esc2(sh.shot_number||'—')+' (Gen '+esc2(sh.generation_number||'—')+')</div>',
+    '<div class="row"><span class="label">Characters</span>'+esc2(sh.characters||'—')+'</div>',
+    '<div class="row"><span class="label">Location</span>'+esc2(sh.location||'—')+'</div>',
+    '<div class="row"><span class="label">Lens</span>'+esc2(sh.lens||'—')+' · '+esc2(sh.aspect_ratio||'—')+' · '+esc2(sh.generation_method||'—')+' · v'+esc2(sh.iteration_count||'1')+' · '+esc2(sh.estimated_cost||'—')+'</div>',
+    '<div class="row"><span class="label">Endpoint</span>'+esc2(sh.endpoint||'—')+'</div>',
+    sh.fountain_text?'<div class="row"><span class="label">Fountain</span><span style="white-space:pre-wrap;font-style:italic">'+esc2(sh.fountain_text).substring(0,400)+'</span></div>':'',
+    '<div class="row"><span class="label">Curated</span><span class="editable" onclick="editField('+i+',\'curated_description\')">'+(sh.curated_description?esc2(sh.curated_description).substring(0,200):'—')+'</span></div>',
+    sh.prompt?'<div class="row"><span class="label">API Prompt</span><span style="white-space:pre-wrap">'+esc2(sh.prompt).substring(0,400)+'</span></div>':'',
+    '<div class="row"><span class="label">Instructions</span><span class="editable" onclick="editField('+i+',\'verbatim_instructions\')">'+(sh.verbatim_instructions?esc2(sh.verbatim_instructions).substring(0,200):'—')+'</span></div>',
+    sh.iteration_history?'<div class="row"><span class="label">Iterations</span><span style="white-space:pre-wrap;font-size:10px">'+esc2(sh.iteration_history).substring(0,500)+'</span></div>':'',
+    sh.output_file?'<div class="row"><span class="label">File</span>'+esc2(sh.output_file)+'</div>':''
+  ].join('');
+  // Show frame
+  if(sh._frame_url){
+    fi.src=sh._frame_url;fi.style.display='block';
+    document.getElementById('viewerEmpty').style.display='none';
+  }
+  // Show/hide buttons
+  var st=sh.status||'';
+  document.getElementById('genBtn').style.display=(st==='pending'||st==='curated')?'inline-block':'none';
+  document.getElementById('regenBtn').style.display=(st==='generated'||st==='selected'||st==='edited'||st==='approved')?'inline-block':'none';
+  document.getElementById('editBtn').style.display=(st==='generated'||st==='selected'||st==='edited'||st==='approved')?'inline-block':'none';
+  document.getElementById('viewerActions').style.display='flex';
+}
+// ── Version history ──
+function renderVersionHistory(sh){
+  var strip=document.getElementById('versionStrip');
+  var hist=[];try{hist=JSON.parse(sh.version_history||'[]');}catch(e){}
+  if(!hist.length){strip.innerHTML='';return;}
+  strip.innerHTML=hist.map(function(fn,i){
+    return'<img src="/api/frame/'+encodeURIComponent(fn)+'" title="'+fn+'" onerror="this.style.display=\'none\'" onclick="swapVersion('+selectedIdx+',\''+fn+'\')">';
+  }).join('');
+}
+async function swapVersion(idx,swapFile){
+  var fn=shots[idx].output_file;
+  var r=await fetch('/api/swap_version',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn,swap_file:swapFile})});
+  if(r.ok){var d=await r.json();toast('Swapped to '+swapFile);refreshData();}
+  else{var e=await r.json();toast(e.error||'Swap failed',true);}
+}
+// ── Actions ──
+async function updateStatus(newStatus){
+  if(selectedIdx<0)return;
+  await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx,status:newStatus})});
+  toast('→ '+newStatus);refreshData();
+}
+async function regenerateShot(){
+  if(selectedIdx<0)return;
+  var fn=shots[selectedIdx].output_file;
+  var btn=document.getElementById('regenBtn');btn.disabled=true;btn.textContent='Regenerating...';
+  var r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
+  btn.disabled=false;btn.textContent='🔄 Regenerate';
+  if(r.ok){var d=await r.json();toast('Regenerated: '+d.output_file+' (v'+d.version+')');refreshData();}
+  else{var e=await r.json();toast(e.error||'Regenerate failed',true);}
+}
+async function generateShot(){
+  if(selectedIdx<0)return;
+  var fn=shots[selectedIdx].output_file;
+  var btn=document.getElementById('genBtn');btn.disabled=true;btn.textContent='Generating...';
+  var r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
+  btn.disabled=false;btn.textContent='⚡ Generate';
+  if(r.ok){var d=await r.json();toast('Generated: '+d.output_file+' (v'+d.version+')');refreshData();}
+  else{var e=await r.json();toast(e.error||'Generate failed',true);}
+}
+// ── Create ──
+function showCreateForm(){document.getElementById('createModal').classList.add('open');}
+function hideCreateForm(){document.getElementById('createModal').classList.remove('open');}
+function autoGenFilename(){
+  var sc=document.getElementById('newScene').value.trim();
+  var fn=sc?'waif_sc_'+sc+'.png':'waif_sc_NN.png';
+  document.getElementById('newFile').value=fn;
+}
+async function createShot(){
+  var sc=document.getElementById('newScene').value.trim();
+  var fname=document.getElementById('newFile').value.trim();
+  var lens=document.getElementById('newLens').value.trim();
+  var gens=parseInt(document.getElementById('newGens').value)||1;
+  var instr=document.getElementById('newInstr').value.trim();
+  var status=document.getElementById('newStatus').value;
+  for(var g=0;g<gens;g++){
+    var fn=g===0?fname:fname.replace(/(\.[^.]+)$/,'_v'+(g+1)+'$1');
+    await fetch('/api/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scene_number:sc,output_file:fn,lens:lens||'28mm',verbatim_instructions:instr,status:status})});
+  }
+  toast('Created '+(gens>1?gens+' shots':'shot'));hideCreateForm();refreshData();
+}
+// ── Edit ──
+function showEditPrompt(){document.getElementById('editModal').classList.add('open');document.getElementById('editInstr').focus();}
+function hideEditPrompt(){document.getElementById('editModal').classList.remove('open');}
+async function editShot(){
+  if(selectedIdx<0)return;
+  var fn=shots[selectedIdx].output_file;
+  var instr=document.getElementById('editInstr').value.trim();
+  if(!instr){toast('Enter edit instructions',true);return;}
+  hideEditPrompt();document.getElementById('editInstr').value='';
+  toast('Edit submitted — processing...');
+  var r=await fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn,edit_instructions:instr})});
+  if(r.ok){var d=await r.json();toast('Edited: '+d.output_file+' (v'+d.version+')');refreshData();}
+  else{var e=await r.json();toast(e.error||'Edit failed',true);}
+}
+// ── Inline field editing ──
+function editField(idx,field){
+  editFieldIdx=idx;editField=field;
+  if(idx<0||idx>=shots.length)return;
+  var val=shots[idx][field]||'';
+  document.getElementById('editFieldLabel').textContent='Edit '+field.replace(/_/g,' ');
+  document.getElementById('editFieldText').value=val;
+  document.getElementById('editFieldModal').classList.add('open');
+}
+function hideFieldEdit(){document.getElementById('editFieldModal').classList.remove('open');}
+async function saveFieldEdit(){
+  var val=document.getElementById('editFieldText').value;
+  if(editFieldIdx<0)return;
+  var fn=shots[editFieldIdx].output_file;
+  await fetch('/api/edit_text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn,field:editField,value:val})});
+  toast('Saved');hideFieldEdit();refreshData();
+}
+// ── Full image ──
+function openFullImage(){
+  if(selectedIdx<0)return;
+  var s=shots[selectedIdx];
+  if(s&&s._frame_url){
+    document.getElementById('fullImg').src=s._frame_url;
+    document.getElementById('imageModal').classList.add('open');
+  }
+}
+// ── Refs ──
+function renderRefs(){
+  var q=(document.getElementById('refSearch').value||'').toLowerCase();
+  var cf=document.getElementById('refCatFilter').value;
+  var grid=document.getElementById('refsGrid');
+  var html='';
+  var cats=Object.keys(refsCat).sort();
+  for(var c=0;c<cats.length;c++){
+    var cat=cats[c];
+    if(cf&&cat!==cf)continue;
+    var imgs=refsCat[cat];
+    var filtered=imgs;
+    if(q)filtered=imgs.filter(function(f){return f.toLowerCase().indexOf(q)>=0;});
+    if(!filtered.length)continue;
+    html+='<div class="ref-cat"><h3>'+cat+'</h3><div class="ref-cat-imgs">';
+    for(var j=0;j<filtered.length;j++){
+      var fn=filtered[j];
+      var label=fn.split('/').pop();
+      html+='<div class="ref-item"><img src="/api/ref/'+encodeURIComponent(fn)+'" title="'+fn+'" onclick="openRefModal(\''+fn+'\')" loading="lazy"><div class="ref-label">'+label+'</div></div>';
+    }
+    html+='</div></div>';
+  }
+  grid.innerHTML=html||'<div style="color:var(--text-dim);padding:20px">No references found</div>';
+}
+function openRefModal(fn){
+  document.getElementById('fullImg').src='/api/ref/'+encodeURIComponent(fn);
+  document.getElementById('imageModal').classList.add('open');
+}
+function toggleRefs(){switchTab('refs');}
+function showRefGenerate(){document.getElementById('refGenModal').classList.add('open');}
+function hideRefGenerate(){document.getElementById('refGenModal').classList.remove('open');}
+async function generateRef(){
+  var cat=document.getElementById('refGenCat').value.trim()||'misc';
+  var instr=document.getElementById('refGenInstr').value.trim();
+  if(!instr){toast('Enter description',true);return;}
+  hideRefGenerate();toast('Generating reference...');
+  var r=await fetch('/api/generate_ref',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({verbatim_instructions:instr,category:cat})});
+  if(r.ok){var d=await r.json();toast('Reference saved: '+d.file);fetchRefs();}
+  else{var e=await r.json();toast(e.error||'Reference generation failed',true);}
+}
+// ── Archive ──
+async function archiveShot(){
+  if(selectedIdx<0)return;
+  var fn=shots[selectedIdx].output_file;
+  await fetch('/api/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
+  toast('Archived');selectedIdx=-1;refreshData();
+}
+function renderArchive(){
+  var archived=shots.filter(function(s){return s.status==='archived';});
+  var grid=document.getElementById('archiveGrid');
+  if(!archived.length){grid.innerHTML='<div style="color:var(--text-dim);padding:20px">No archived shots</div>';return;}
+  grid.innerHTML=archived.map(function(s){
+    var idx=shots.indexOf(s);
+    var url=s._frame_url||'/api/frame/'+encodeURIComponent(s.output_file||'');
+    var img=url?'<img src="'+url+'" style="width:160px;height:90px;object-fit:cover;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="unarchiveShot('+idx+')">':'<div style="width:160px;height:90px;border:1px solid var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">No image</div>';
+    return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div>'+img+'</div><div style="font-size:10px;color:var(--text-dim);text-align:center">'+(s.output_file||'').split('/').pop()+'</div><button onclick="unarchiveShot('+idx+')" style="font-size:11px;padding:2px 8px;background:var(--bg);color:var(--green);border:1px solid var(--border);border-radius:4px;cursor:pointer">↩ Restore</button></div>';
+  }).join('');
+}
+async function unarchiveShot(idx){
+  var fn=shots[idx].output_file;
+  await fetch('/api/unarchive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
+  toast('Restored');refreshData();renderArchive();
+}
+// ── Find shot by output_file ──
+function findShotByFile(fn){for(var i=0;i<shots.length;i++){if(shots[i].output_file===fn)return i;}return -1;}
+// ── Refresh ──
+function refreshData(){
+  var selFile=selectedIdx>=0&&selectedIdx<shots.length?shots[selectedIdx].output_file:null;
+  fetchShots().then(function(){
+    if(selFile){var idx=findShotByFile(selFile);if(idx>=0)selectShot(idx);}
+  });
+}
+// ── Utilities ──
+function esc(t){return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// ── Keyboard ──
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){hideCreateForm();hideEditPrompt();hideFieldEdit();hideRefGenerate();document.getElementById('imageModal').classList.remove('open');}
+  if(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA'||document.activeElement.tagName==='SELECT')return;
+  if(e.key==='ArrowDown'){e.preventDefault();if(selectedIdx<shots.length-1)selectShot(selectedIdx+1);}
+  if(e.key==='ArrowUp'){e.preventDefault();if(selectedIdx>0)selectShot(selectedIdx-1);}
+  if(e.key==='a'&&selectedIdx>=0)updateStatus('approved');
+});
+// ── Init ──
+fetchShots();fetchRefs();
+// Viewer actions bar (inserted by JS into viewer div)
+(function(){
+  var v=document.getElementById('viewer');
+  var div=document.createElement('div');
+  div.id='viewerActions';
+  div.className='viewer-actions';
+  div.style.display='none';
+  div.innerHTML='<button id="genBtn" class="btn-accent" onclick="generateShot()" style="display:none">⚡ Generate</button><button id="regenBtn" class="btn-accent" onclick="regenerateShot()" style="display:none">🔄 Regenerate</button><button id="editBtn" class="btn-accent" onclick="showEditPrompt()" style="display:none;background:var(--accent-dim)!important;border-color:var(--accent)!important;color:var(--accent)!important">✏️ Edit</button><select id="statusSelect" onchange="updateStatus(this.value)" style="font-size:11px;padding:4px 8px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px"><option value="">Set status…</option><option>pending</option><option>curated</option><option>generated</option><option>approved</option><option>edited</option><option>selected</option><option>archived</option></select><button onclick="archiveShot()" style="font-size:11px;padding:4px 10px;background:var(--bg);color:var(--red);border:1px solid var(--border);border-radius:4px;cursor:pointer">🗑 Archive</button><button onclick="refreshData()">↻ Refresh</button>';
+  v.appendChild(div);
+  // Version history strip
+  var strip=document.createElement('div');
+  strip.id='versionStrip';
+  strip.className='version-strip';
+  v.appendChild(strip);
+})();
+</script>
+</body>
+</html>
