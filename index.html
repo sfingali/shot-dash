@@ -26,7 +26,7 @@ th { position:sticky; top:0; background:var(--surface); text-align:left; padding
 th:hover { color:var(--text); }
 td { padding:5px 10px; border-bottom:1px solid #1a1a1a; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 tr { cursor:pointer; transition:background 0.1s; }
-tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.selected td { color:#fff; }
+tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.selected td { color:#fff; } tr.dragging { opacity:0.4; } tr.drag-over { border-top:2px solid var(--accent); }
 .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
 .s-gen { background:#8b8; } .s-app { background:var(--green); } .s-pen { background:var(--accent); } .s-edi { background:var(--blue); }
 .viewer-empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:14px; }

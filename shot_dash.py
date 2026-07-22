@@ -186,7 +186,25 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
-        if self.path == "/api/update":
+        if self.path == "/api/reorder":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except json.JSONDecodeError:
+                return self._error("Invalid JSON")
+            scene = data.get("scene_number", "")
+            order = data.get("order", [])  # list of output_file names in new order
+            rows, fieldnames = read_csv()
+            # Update shot_number for all shots in this scene
+            for i, fn in enumerate(order):
+                for r in rows:
+                    if r.get('output_file', '').strip() == fn:
+                        r['shot_number'] = str(i + 1)
+                        break
+            write_csv(rows, fieldnames)
+            self._json({"ok": True})
+
+        elif self.path == "/api/update":
             length = int(self.headers.get("Content-Length", 0))
             try:
                 data = json.loads(self.rfile.read(length))
