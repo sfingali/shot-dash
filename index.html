@@ -26,7 +26,7 @@ th { position:sticky; top:0; background:var(--surface); text-align:left; padding
 th:hover { color:var(--text); }
 td { padding:5px 10px; border-bottom:1px solid #1a1a1a; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 tr { cursor:pointer; transition:background 0.1s; }
-tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.selected td { color:#fff; } tr.dragging { opacity:0.4; } tr.drag-over { border-top:2px solid var(--accent); }
+tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.selected td { color:#fff; } tr.dragging { opacity:0.4; } tr.drag-over { border-top:2px solid var(--accent); } tr[draggable] { cursor:grab; } tr[draggable]:active { cursor:grabbing; } tr.dragging { opacity:0.4; } tr.drag-over { border-top:2px solid var(--accent); }
 .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:middle; }
 .s-gen { background:#8b8; } .s-app { background:var(--green); } .s-pen { background:var(--accent); } .s-edi { background:var(--blue); }
 .viewer-empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:14px; }
@@ -108,7 +108,40 @@ function renderStats(){document.getElementById('stats').innerHTML='Shots: <span 
 function count(s){return shots.filter(sh=>(sh.status||'').toLowerCase()===s).length;}
 async function updateStatus(idx,status){const r=await fetch('/api/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:idx,field:'status',value:status})});if(r.ok){shots[idx].status=status;renderGrid();renderStats();selectShot(idx);toast('→ '+status);}else{toast('Failed',true);}}
 function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.style.background=err?'var(--red)':'var(--accent)';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);}
-function renderGrid(){const s=document.getElementById('search').value.toLowerCase(),sf=document.getElementById('statusFilter').value.toLowerCase();let f=shots.filter(sh=>{if(sf&&(sh.status||'').toLowerCase()!==sf)return false;if(s){const h=[sh.scene_number,sh.shot_number,sh.status,sh.lens,sh.aspect_ratio,sh.verbatim_instructions||'',sh.curated_description||'',sh.output_file||''].join(' ').toLowerCase();if(!h.includes(s))return false;}return true;});f.sort((a,b)=>{const va=(a[sortCol]||'').toString().toLowerCase(),vb=(b[sortCol]||'').toString().toLowerCase();if(sortCol==='shot_number'||sortCol==='scene_number')return(parseFloat(va)||0-(parseFloat(vb)||0))*sortDir;return va.localeCompare(vb)*sortDir;});document.getElementById('count').textContent=f.length+' shots';document.getElementById('grid').innerHTML=f.map((sh,fi)=>{const ri=shots.indexOf(sh),sel=ri===selectedIdx?' class="selected"':'',st=(sh.status||'pending').toLowerCase();return`<tr${sel} onclick="selectShot(${ri})"><td>${sh.scene_number||'—'}</td><td>${sh.shot_number||'—'}</td><td>${sh.generation_number||''}</td><td><span class="status-dot s-${st}"></span>${st}</td><td>${(sh.characters||'').substring(0,20)}</td><td>${(sh.location||'').substring(0,25)}</td><td>${sh.lens||''}</td><td>${sh.generation_method||''}</td><td>${sh.iteration_count||''}</td><td>${sh.estimated_cost||''}</td><td title="${esc(sh.verbatim_instructions||'')}">${(sh.verbatim_instructions||'').substring(0,60)}</td><td>${sh.output_file||''}${sh._frame_url?' 📷':''}</td></tr>`;}).join('');}
+function renderGrid(){
+    const search = (document.getElementById('search').value || '').toLowerCase();
+    const statusF = (document.getElementById('statusFilter').value || '').toLowerCase();
+    let filtered = shots.filter(sh => {
+        if (statusF && (sh.status || '').toLowerCase() !== statusF) return false;
+        if (search) {
+            const haystack = [sh.scene_number, sh.shot_number, sh.status, sh.lens, sh.aspect_ratio, sh.verbatim_instructions || '', sh.curated_description || '', sh.output_file || ''].join(' ').toLowerCase();
+            if (!haystack.includes(search)) return false;
+        }
+        return true;
+    });
+    filtered.sort((a, b) => {
+        const sa = parseFloat(a.scene_number) || 9999;
+        const sb = parseFloat(b.scene_number) || 9999;
+        if (sa !== sb) return sa - sb;
+        return (parseFloat(a.shot_number) || 0) - (parseFloat(b.shot_number) || 0);
+    });
+    let globalNum = 0;
+    filtered.forEach(sh => { globalNum++; sh._globalNum = globalNum; });
+    document.getElementById('count').textContent = filtered.length + ' shots';
+    const tbody = document.getElementById('grid');
+    tbody.innerHTML = filtered.map((sh, fi) => {
+        const realIdx = shots.indexOf(sh);
+        const sel = realIdx === selectedIdx ? ' class="selected"' : '';
+        const status = (sh.status || 'pending').toLowerCase();
+        const sc = sh.scene_number || '\u2014';
+        const sn = sh._globalNum || sh.shot_number || '\u2014';
+        const instr = (sh.verbatim_instructions || '').substring(0, 60);
+        const file = sh.output_file || '';
+        const hasFrame = sh._frame_url ? ' \ud83d\udcf7' : '';
+        const scene = sc.replace(/'/g, "\\'");
+        return '<tr' + sel + ' onclick="selectShot(' + realIdx + ')" draggable="true" data-scene="' + scene + '" data-idx="' + realIdx + '" data-fn="' + esc(file) + '" ondragstart="dragStart(event)" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropRow(event)"><td>' + sc + '</td><td class="shot-num">' + sn + '</td><td>' + (sh.generation_number || '') + '</td><td><span class="status-dot s-' + status + '"></span>' + status + '</td><td>' + ((sh.characters || '').substring(0, 20)) + '</td><td>' + ((sh.location || '').substring(0, 25)) + '</td><td>' + (sh.lens || '') + '</td><td>' + (sh.generation_method || '') + '</td><td>' + (sh.iteration_count || '') + '</td><td>' + (sh.estimated_cost || '') + '</td><td title="' + esc(sh.verbatim_instructions || '') + '">' + instr + '</td><td>' + file + hasFrame + '</td></tr>';
+    }).join('');
+}
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 function selectShot(idx){selectedIdx=idx;renderGrid();if(idx<0||idx>=shots.length){showViewer(false);return;}const sh=shots[idx];showViewer(true);document.getElementById('statusSelect').value=(sh.status||'pending').toLowerCase();document.getElementById('viewerInfo').innerHTML=[`<div class="row"><span class="label">Scene</span>${sh.scene_number||'—'} / Shot ${sh.shot_number||'—'} (Gen ${sh.generation_number||'—'})</div>`,`<div class="row"><span class="label">Characters</span>${sh.characters||'—'}</div>`,`<div class="row"><span class="label">Location</span>${sh.location||'—'}</div>`,`<div class="row"><span class="label">Lens</span>${sh.lens||'—'} · ${sh.aspect_ratio||'—'} · ${sh.generation_method||'—'} · v${sh.iteration_count||'1'} · ${sh.estimated_cost||'—'}</div>`,`<div class="row"><span class="label">Endpoint</span>${sh.endpoint||'—'}</div>`,sh.fountain_text?`<div class="row"><span class="label">Fountain</span><span style="white-space:pre-wrap;font-style:italic">${esc(sh.fountain_text).substring(0,400)}</span></div>`:'',sh.curated_description?`<div class="row"><span class="label">Curated</span>${esc(sh.curated_description).substring(0,200)}</div>`:'',sh.prompt?`<div class="row"><span class="label">API Prompt</span><span style="white-space:pre-wrap">${esc(sh.prompt).substring(0,400)}</span></div>`:'',sh.iteration_history?`<div class="row"><span class="label">Iterations</span><span style="white-space:pre-wrap;font-size:10px">${esc(sh.iteration_history).substring(0,500)}</span></div>`:'',sh.output_file?`<div class="row"><span class="label">File</span>${esc(sh.output_file)}</div>`:''].join('');if(sh._frame_url){document.getElementById('frameImg').src=sh._frame_url;document.getElementById('viewerImage').style.display='flex';}else{document.getElementById('viewerImage').style.display='none';}}
 function showViewer(s){document.getElementById('viewerEmpty').style.display=s?'none':'flex';document.getElementById('viewerInfo').style.display=s?'block':'none';document.getElementById('viewerActions').style.display=s?'flex':'none';if(!s)document.getElementById('viewerImage').style.display='none';}
