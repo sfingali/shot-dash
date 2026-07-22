@@ -966,9 +966,11 @@ class Handler(BaseHTTPRequestHandler):
             sc = new_row.get("scene_number", "")
             existing = [int(r.get("shot_number") or 0) for r in rows if r.get("scene_number") == sc]
             new_row["shot_number"] = str(max(existing) + 1 if existing else 1)
-            # Auto-fill location and characters
+            # Auto-fill fountain text, location, and characters
             instr = (new_row.get("verbatim_instructions") or "").lower()
-            # Location from scene lookup (or infer from instructions)
+            if sc in SCENE_TEXT and not new_row.get("fountain_text"):
+                new_row["fountain_text"] = SCENE_TEXT[sc]
+            # Location from scene lookup
             if sc in SCENE_LOOKUP:
                 if not new_row.get("location"):
                     new_row["location"] = SCENE_LOOKUP[sc]["location"]
