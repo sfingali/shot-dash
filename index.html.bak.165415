@@ -207,7 +207,7 @@ function switchTab(t){
 // ── Toast ──
 function toast(msg,isErr){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');t.classList.toggle('error',!!isErr);clearTimeout(t._to);t._to=setTimeout(function(){t.classList.remove('show');},3000);}
 // ── Data ──
-async function fetchShots(){var r=await fetch('/api/shots');shots=(await r.json()).shots;shots.sort(function(a,b){return(parseInt(a.shot_number)||0)-(parseInt(b.shot_number)||0);});await refreshFrames();renderStats();}
+async function fetchShots(){var r=await fetch('/api/shots');shots=(await r.json()).shots;await refreshFrames();renderStats();}
 async function refreshFrames(){
   var r=await fetch('/api/frames'),d=await r.json();
   for(var i=0;i<shots.length;i++){
@@ -252,8 +252,7 @@ function renderGrid(){
   thead.innerHTML='<tr>'+shotCols.map(function(c){return'<th onclick="sortBy(\''+c+'\')">'+(labels[c]||c)+(sortCol===c?(sortDir>0?' ▴':' ▾'):'')+'</th>';}).join('')+'</tr>';
   grid.innerHTML=filtered.map(function(s,i){
     var realIdx=shots.indexOf(s);
-    var fn=JSON.stringify(s.output_file||'');
-    return'<tr draggable="true" ondragstart="dragStart(event,'+realIdx+')" ondragover="dragOver(event)" ondrop="dropRow(event,'+realIdx+')" onclick="clickShot('+fn+')" class="'+(selectedIdx===realIdx?'selected':'')+'">'+
+    return'<tr draggable="true" ondragstart="dragStart(event,'+realIdx+')" ondragover="dragOver(event)" ondrop="dropRow(event,'+realIdx+')" onclick="selectShot('+realIdx+')" class="'+(selectedIdx===realIdx?'selected':'')+'">'+
       shotCols.map(function(c){
         var v=s[c]||'';
         if(c==='shot_number')v=s._gNum;
@@ -274,13 +273,10 @@ async function saveReorder(){
   var order=shots.map(function(s){return s.output_file;});
   await fetch('/api/reorder',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order:order})});
 }
-// ── Click handler (stable by output_file) ──
-function clickShot(fn){var idx=findShotByFile(fn);if(idx>=0)selectShot(idx);}
 // ── Select ──
 function selectShot(i){
-  selectedIdx=i;
-  var s=shots[i];if(!s){return;}
-  renderGrid();
+  selectedIdx=i;renderGrid();
+  var s=shots[i];if(!s)return;
   // Clear previous frame
   var fi=document.getElementById('frameImg');
   fi.src='';fi.style.display='none';
@@ -326,8 +322,7 @@ function renderVersionHistory(sh){
   }).join('');
 }
 async function swapVersion(idx,swapFile){
-  var fn=shots[idx].output_file;
-  var r=await fetch('/api/swap_version',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn,swap_file:swapFile})});
+  var r=await fetch('/api/swap_version',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:idx,swap_file:swapFile})});
   if(r.ok){var d=await r.json();toast('Swapped to '+swapFile);refreshData();}
   else{var e=await r.json();toast(e.error||'Swap failed',true);}
 }
@@ -339,18 +334,16 @@ async function updateStatus(newStatus){
 }
 async function regenerateShot(){
   if(selectedIdx<0)return;
-  var fn=shots[selectedIdx].output_file;
   var btn=document.getElementById('regenBtn');btn.disabled=true;btn.textContent='Regenerating...';
-  var r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
+  var r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx})});
   btn.disabled=false;btn.textContent='🔄 Regenerate';
   if(r.ok){var d=await r.json();toast('Regenerated: '+d.output_file+' (v'+d.version+')');refreshData();}
   else{var e=await r.json();toast(e.error||'Regenerate failed',true);}
 }
 async function generateShot(){
   if(selectedIdx<0)return;
-  var fn=shots[selectedIdx].output_file;
   var btn=document.getElementById('genBtn');btn.disabled=true;btn.textContent='Generating...';
-  var r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
+  var r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx})});
   btn.disabled=false;btn.textContent='⚡ Generate';
   if(r.ok){var d=await r.json();toast('Generated: '+d.output_file+' (v'+d.version+')');refreshData();}
   else{var e=await r.json();toast(e.error||'Generate failed',true);}
@@ -381,19 +374,17 @@ function showEditPrompt(){document.getElementById('editModal').classList.add('op
 function hideEditPrompt(){document.getElementById('editModal').classList.remove('open');}
 async function editShot(){
   if(selectedIdx<0)return;
-  var fn=shots[selectedIdx].output_file;
   var instr=document.getElementById('editInstr').value.trim();
   if(!instr){toast('Enter edit instructions',true);return;}
   hideEditPrompt();document.getElementById('editInstr').value='';
   toast('Edit submitted — processing...');
-  var r=await fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn,edit_instructions:instr})});
+  var r=await fetch('/api/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx,edit_instructions:instr})});
   if(r.ok){var d=await r.json();toast('Edited: '+d.output_file+' (v'+d.version+')');refreshData();}
   else{var e=await r.json();toast(e.error||'Edit failed',true);}
 }
 // ── Inline field editing ──
 function editField(idx,field){
   editFieldIdx=idx;editField=field;
-  if(idx<0||idx>=shots.length)return;
   var val=shots[idx][field]||'';
   document.getElementById('editFieldLabel').textContent='Edit '+field.replace(/_/g,' ');
   document.getElementById('editFieldText').value=val;
@@ -402,9 +393,7 @@ function editField(idx,field){
 function hideFieldEdit(){document.getElementById('editFieldModal').classList.remove('open');}
 async function saveFieldEdit(){
   var val=document.getElementById('editFieldText').value;
-  if(editFieldIdx<0)return;
-  var fn=shots[editFieldIdx].output_file;
-  await fetch('/api/edit_text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn,field:editField,value:val})});
+  await fetch('/api/edit_text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:editFieldIdx,field:editField,value:val})});
   toast('Saved');hideFieldEdit();refreshData();
 }
 // ── Full image ──
@@ -459,8 +448,7 @@ async function generateRef(){
 // ── Archive ──
 async function archiveShot(){
   if(selectedIdx<0)return;
-  var fn=shots[selectedIdx].output_file;
-  await fetch('/api/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
+  await fetch('/api/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:selectedIdx})});
   toast('Archived');selectedIdx=-1;refreshData();
 }
 function renderArchive(){
@@ -475,19 +463,11 @@ function renderArchive(){
   }).join('');
 }
 async function unarchiveShot(idx){
-  var fn=shots[idx].output_file;
-  await fetch('/api/unarchive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({output_file:fn})});
+  await fetch('/api/unarchive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({row_index:idx})});
   toast('Restored');refreshData();renderArchive();
 }
-// ── Find shot by output_file ──
-function findShotByFile(fn){for(var i=0;i<shots.length;i++){if(shots[i].output_file===fn)return i;}return -1;}
 // ── Refresh ──
-function refreshData(){
-  var selFile=selectedIdx>=0&&selectedIdx<shots.length?shots[selectedIdx].output_file:null;
-  fetchShots().then(function(){
-    if(selFile){var idx=findShotByFile(selFile);if(idx>=0)selectShot(idx);}
-  });
-}
+function refreshData(){fetchShots().then(function(){if(selectedIdx>=0&&selectedIdx<shots.length){selectShot(selectedIdx);}});}
 // ── Utilities ──
 function esc(t){return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 // ── Keyboard ──

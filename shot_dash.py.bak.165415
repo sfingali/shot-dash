@@ -18,13 +18,6 @@ from pathlib import Path
 PORT = 8090
 CSV_PATH = "/opt/data/home/projects/the-waif/storyboard_shots.csv"
 FRAMES_DIR = "/opt/data/home/projects/the-waif/storyboards_gpt"
-
-def find_row_by_file(rows, output_file):
-    """Return (row_index, row) or (None, None)."""
-    for i, r in enumerate(rows):
-        if r.get("output_file", "").strip() == output_file.strip():
-            return i, r
-    return None, None
 REFS_DIR = "/opt/data/home/projects/the-waif/storyboard_reference"
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
@@ -546,18 +539,11 @@ class Handler(BaseHTTPRequestHandler):
                 data = json.loads(self.rfile.read(length))
             except json.JSONDecodeError:
                 return self._error("Invalid JSON")
-            edit_instructions = (data.get("edit_instructions") or "").strip()
-            if not edit_instructions:
-                return self._error("Missing edit_instructions")
-            rows, fieldnames = read_csv()
             row_index = data.get("row_index")
-            output_file = data.get("output_file", "").strip()
-            if output_file:
-                row_index, row = find_row_by_file(rows, output_file)
-                if row_index is None:
-                    return self._error("Shot not found: " + output_file, 400)
-            if row_index is None:
-                return self._error("Missing row_index or output_file")
+            edit_instructions = (data.get("edit_instructions") or "").strip()
+            if row_index is None or not edit_instructions:
+                return self._error("Missing row_index or edit_instructions")
+            rows, fieldnames = read_csv()
             if row_index < 0 or row_index >= len(rows):
                 return self._error("Row index out of range", 400)
             shot = rows[row_index]
@@ -715,15 +701,10 @@ class Handler(BaseHTTPRequestHandler):
                 data = json.loads(self.rfile.read(length))
             except json.JSONDecodeError:
                 return self._error("Invalid JSON")
-            rows, fieldnames = read_csv()
             row_index = data.get("row_index")
-            output_file = data.get("output_file", "").strip()
-            if output_file:
-                row_index, row = find_row_by_file(rows, output_file)
-                if row_index is None:
-                    return self._error("Shot not found: " + output_file, 400)
             if row_index is None:
-                return self._error("Missing row_index or output_file")
+                return self._error("Missing row_index")
+            rows, fieldnames = read_csv()
             if row_index < 0 or row_index >= len(rows):
                 return self._error("Row index out of range", 400)
             rows[row_index]["status"] = "archived"
@@ -736,15 +717,10 @@ class Handler(BaseHTTPRequestHandler):
                 data = json.loads(self.rfile.read(length))
             except json.JSONDecodeError:
                 return self._error("Invalid JSON")
-            rows, fieldnames = read_csv()
             row_index = data.get("row_index")
-            output_file = data.get("output_file", "").strip()
-            if output_file:
-                row_index, row = find_row_by_file(rows, output_file)
-                if row_index is None:
-                    return self._error("Shot not found: " + output_file, 400)
             if row_index is None:
-                return self._error("Missing row_index or output_file")
+                return self._error("Missing row_index")
+            rows, fieldnames = read_csv()
             if row_index < 0 or row_index >= len(rows):
                 return self._error("Row index out of range", 400)
             rows[row_index]["status"] = "pending"
@@ -775,15 +751,10 @@ class Handler(BaseHTTPRequestHandler):
                 data = json.loads(self.rfile.read(length))
             except json.JSONDecodeError:
                 return self._error("Invalid JSON")
-            rows, fieldnames = read_csv()
             row_index = data.get("row_index")
-            output_file = data.get("output_file", "").strip()
-            if output_file:
-                row_index, row = find_row_by_file(rows, output_file)
-                if row_index is None:
-                    return self._error("Shot not found: " + output_file, 400)
             if row_index is None:
-                return self._error("Missing row_index or output_file")
+                return self._error("Missing row_index")
+            rows, fieldnames = read_csv()
             if row_index < 0 or row_index >= len(rows):
                 return self._error("Row index out of range", 400)
             shot = rows[row_index]
@@ -907,18 +878,11 @@ class Handler(BaseHTTPRequestHandler):
                 data = json.loads(self.rfile.read(length))
             except json.JSONDecodeError:
                 return self._error("Invalid JSON")
-            swap_file = data.get("swap_file", "").strip()
-            if not swap_file:
-                return self._error("Missing swap_file")
-            rows, fieldnames = read_csv()
             row_index = data.get("row_index")
-            output_file = data.get("output_file", "").strip()
-            if output_file:
-                row_index, row = find_row_by_file(rows, output_file)
-                if row_index is None:
-                    return self._error("Shot not found: " + output_file, 400)
-            if row_index is None:
-                return self._error("Missing row_index or output_file")
+            swap_file = data.get("swap_file", "").strip()
+            if row_index is None or not swap_file:
+                return self._error("Missing row_index or swap_file")
+            rows, fieldnames = read_csv()
             if row_index < 0 or row_index >= len(rows):
                 return self._error("Row index out of range", 400)
             shot = rows[row_index]
