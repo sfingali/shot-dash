@@ -790,6 +790,104 @@ class Handler(BaseHTTPRequestHandler):
             write_csv(rows, fieldnames)
             self._json({"ok": True})
 
+        elif self.path == "/api/edit":
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                data = json.loads(self.rfile.read(length))
+            except json.JSONDecodeError:
+                return self._error("Invalid JSON")
+            row_index = data.get("row_index")
+            edit_instructions = (data.get("edit_instructions") or "").strip()
+            if row_index is None or not edit_instructions:
+                return self._error("Missing row_index or edit_instructions")
+            rows, fieldnames = read_csv()
+            if row_index < 0 or row_index >= len(rows):
+                return self._error("Row index out of range", 400)
+            shot = rows[row_index]
+            old_file = shot.get("output_file", "").strip()
+            if not old_file:
+                return self._error("Shot has no image to edit", 400)
+            source_path = os.path.join(FRAMES_DIR, old_file)
+            if not os.path.exists(source_path):
+                found = None
+                for p in Path(FRAMES_DIR).rglob(old_file):
+                    found = str(p); break
+                if not found:
+                    return self._error("Source image not found: " + old_file, 400)
+                source_path = found
+            with open(source_path, "rb") as sf:
+                source_data = sf.read()
+            edit_prompt = edit_instructions + ". Keep everything else the same: composition, lighting, palette, mood. Photorealistic cinematic still from an indie horror film. No text, no watermark, no logos."
+            key = None
+            env_path = os.path.expanduser("/opt/data/profiles/heavy/.env")
+            if os.path.exists(env_path):
+                with open(env_path) as ef:
+                    for line in ef:
+                        if "OPENAI_KEY" in line or "VOICE_TOOLS_OPENAI_KEY" in line:
+                            key = line.strip().split("=", 1)[1].strip().strip("'").strip('"'); break
+            if not key:
+                return self._error("OpenAI API key not found", 500)
+            import urllib.request, base64
+            boundary = '----Boundary' + os.urandom(16).hex()
+            def enc(lines_list):
+                return '\r\n'.join(lines_list).encode() + b'\r\n'
+            body = b''
+            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="image"; filename="source.png"', 'Content-Type: image/png', ''])
+            body += source_data + b'\r\n'
+            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="prompt"', '', edit_prompt])
+            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="model"', '', 'gpt-image-2'])
+            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="size"', '', '2560x1072'])
+            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="quality"', '', 'medium'])
+            body += enc(['--' + boundary, 'Content-Disposition: form-data; name="n"', '', '1'])
+            body += ('--' + boundary + '--\r\n').encode()
+            req = urllib.request.Request(
+                'https://api.openai.com/v1/images/edits',
+                data=body,
+                headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'multipart/form-data; boundary=' + boundary}
+            )
+            try:
+                resp = json.loads(urllib.request.urlopen(req, timeout=120).read())
+            except urllib.error.HTTPError as e:
+                return self._error("GPT Image 2 edit blocked: " + e.read().decode()[:300], 400)
+            except Exception as e:
+                return self._error("API error: " + str(e), 500)
+            d = resp.get("data", [{}])
+            if not d:
+                return self._error("No image data in response", 500)
+            if "b64_json" in d[0]:
+                img_bytes = base64.b64decode(d[0]["b64_json"])
+            else:
+                img_bytes = urllib.request.urlopen(d[0]["url"]).read()
+            import re
+            v_match = re.search(r'_v(\d+)', old_file)
+            if v_match:
+                new_v = int(v_match.group(1)) + 1
+                base_name = old_file[:v_match.start()]
+                ext = os.path.splitext(old_file)[1]
+            else:
+                new_v = 2
+                base_name = os.path.splitext(old_file)[0]
+                ext = os.path.splitext(old_file)[1]
+            output_file = base_name + "_v" + str(new_v) + ext
+            out_path = os.path.join(FRAMES_DIR, output_file)
+            with open(out_path, "wb") as of:
+                of.write(img_bytes)
+            try:
+                history = json.loads(shot.get("version_history") or "[]")
+            except json.JSONDecodeError:
+                history = []
+            history.append(old_file)
+            shot["version_history"] = json.dumps(history)
+            shot["output_file"] = output_file
+            shot["status"] = "edited"
+            shot["generation_method"] = "edit"
+            shot["endpoint"] = "/v1/images/edits (multipart/form-data POST)"
+            shot["estimated_cost"] = shot.get("estimated_cost") or "$0.04"
+            shot["prompt"] = edit_prompt
+            shot["source_frame"] = old_file
+            write_csv(rows, fieldnames)
+            self._json({"ok": True, "output_file": output_file, "size_kb": len(img_bytes) // 1024, "version": new_v})
+
         elif self.path == "/api/generate":
             length = int(self.headers.get("Content-Length", 0))
             try:
