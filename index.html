@@ -98,6 +98,7 @@ tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.s
 <div class="modal" id="modal" onclick="closeModal()">
 <button class="modal-close">&times;</button>
 <img id="modalImg" src="" alt=""><div class="modal-name" id="modalName"></div>
+</div>
 
 <div class="modal" id="createModal" style="z-index:200" onclick="event.target===this&&hideCreateForm()">
 <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;width:420px;max-height:80vh;overflow-y:auto" onclick="event.stopPropagation()">
@@ -119,7 +120,6 @@ tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.s
 </div>
 </div>
 
-</div>
 <div class="toast" id="toast"></div>
 <script>
 let shots=[],selectedIdx=-1,sortCol='scene_number',sortDir=1;

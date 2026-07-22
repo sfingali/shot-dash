@@ -108,12 +108,15 @@ class Handler(BaseHTTPRequestHandler):
         pass  # quiet
 
     def _respond(self, status, content_type, body_bytes):
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", len(body_bytes))
-        self.send_header("Cache-Control", "no-cache")
-        self.end_headers()
-        self.wfile.write(body_bytes)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", len(body_bytes))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body_bytes)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # client disconnected mid-transfer
 
     def _json(self, data, status=200):
         self._respond(status, "application/json", json.dumps(data).encode())
