@@ -104,11 +104,11 @@ tr:hover { background:#222; } tr.selected { background:var(--accent-dim); } tr.s
 <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;width:420px;max-height:80vh;overflow-y:auto" onclick="event.stopPropagation()">
 <h3 style="color:var(--accent);margin:0 0 16px">New Shot</h3>
 <div style="display:flex;flex-direction:column;gap:10px">
-<div><label style="font-size:11px;color:var(--text-dim);display:block">Scene Number</label><input id="newScene" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px" placeholder="e.g. 11"></div>
-<div><label style="font-size:11px;color:var(--text-dim);display:block">Output File</label><input id="newFile" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px" placeholder="e.g. waif_sc_11.png"></div>
+<div><label style="font-size:11px;color:var(--text-dim);display:block">Scene Number (optional)</label><input id="newScene" oninput="autoGenFilename()" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px" placeholder="e.g. 11"></div>
+<div><label style="font-size:11px;color:var(--text-dim);display:block">Output File (auto)</label><input id="newFile" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px;color:var(--text-dim)" placeholder="waif_sc_NN.png"></div>
 <div style="display:flex;gap:10px">
 <div style="flex:1"><label style="font-size:11px;color:var(--text-dim);display:block">Lens</label><input id="newLens" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px" placeholder="e.g. 28mm"></div>
-<div style="flex:1"><label style="font-size:11px;color:var(--text-dim);display:block">Ratio</label><input id="newRatio" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px" placeholder="e.g. 2.39:1"></div>
+<div style="flex:1"><label style="font-size:11px;color:var(--text-dim);display:block">Generations</label><input id="newGens" type="number" min="1" value="1" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px"></div>
 </div>
 <div><label style="font-size:11px;color:var(--text-dim);display:block">Instructions</label><textarea id="newInstr" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px;resize:vertical;min-height:60px" placeholder="Shot description..."></textarea></div>
 <div><label style="font-size:11px;color:var(--text-dim);display:block">Status</label><select id="newStatus" style="width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px"><option value="pending">Pending</option><option value="curated">Curated</option><option value="generated">Generated</option></select></div>
@@ -173,10 +173,23 @@ function sortBy(c){sortCol===c?sortDir*=-1:(sortCol=c,sortDir=1);renderGrid();}
 
 function showCreateForm(){document.getElementById('createModal').classList.add('open');document.getElementById('newScene').focus();}
 function hideCreateForm(){document.getElementById('createModal').classList.remove('open');}
+function autoGenFilename(){
+var sc=document.getElementById('newScene').value||'NN';
+document.getElementById('newFile').value='waif_sc_'+sc+'.png';
+document.getElementById('newFile').style.color='var(--text-dim)';
+}
 async function createShot(){
-const data={scene_number:document.getElementById('newScene').value,output_file:document.getElementById('newFile').value,lens:document.getElementById('newLens').value,aspect_ratio:document.getElementById('newRatio').value,verbatim_instructions:document.getElementById('newInstr').value,status:document.getElementById('newStatus').value};
-const r=await fetch('/api/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-if(r.ok){hideCreateForm();refreshData();toast('Created');document.getElementById('newScene').value='';document.getElementById('newFile').value='';document.getElementById('newLens').value='';document.getElementById('newRatio').value='';document.getElementById('newInstr').value='';}else{toast('Create failed',true);}
+var gens=parseInt(document.getElementById('newGens').value)||1;
+for(var i=0;i<gens;i++){
+var fname=document.getElementById('newFile').value;
+if(gens>1){var p=fname.lastIndexOf('.');fname=fname.substring(0,p)+'_v'+(i+1)+fname.substring(p);}
+var data={scene_number:document.getElementById('newScene').value,output_file:fname,lens:document.getElementById('newLens').value,aspect_ratio:'2.39:1',verbatim_instructions:document.getElementById('newInstr').value,status:document.getElementById('newStatus').value};
+var r=await fetch('/api/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+if(!r.ok){toast('Create failed: '+(i+1),true);return;}
+}
+hideCreateForm();refreshData();toast('Created '+gens+' shot'+(gens>1?'s':''));
+document.getElementById('newScene').value='';document.getElementById('newFile').value='';document.getElementById('newLens').value='';document.getElementById('newInstr').value='';document.getElementById('newGens').value='1';
+document.getElementById('newFile').style.color='var(--text-dim)';
 }
 // Esc to close create modal
 document.addEventListener('keydown',e=>{if(e.key==='Escape')hideCreateForm();});
