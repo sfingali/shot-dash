@@ -1540,7 +1540,9 @@ async function createShot(){
     let firstFile = null;
     for (let g = 0; g < gens; g++){
       const fn = g === 0 ? fname : fname.replace(/(_v\d+)?(\.[^.]+)$/, '') + '_alt' + (g + 1) + '_v1.png';
-      const d = await api('api/create', {scene_number: sc, output_file: fn, lens, verbatim_instructions: instr, status, hero_tags: heroTags});
+      const body = {scene_number: sc, output_file: fn, lens, verbatim_instructions: instr, status, hero_tags: heroTags};
+      if (S.selectedKey) body.after_file = S.selectedKey;
+      const d = await api('api/create', body);
       if (!firstFile) firstFile = d.row && d.row.output_file;
     }
     toast(gens > 1 ? 'Created ' + gens + ' storyboards' : 'Storyboard created');

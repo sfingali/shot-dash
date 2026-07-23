@@ -2171,7 +2171,15 @@ class Handler(BaseHTTPRequestHandler):
                         n += 1
                     new_row["output_file"] = "%s_%d%s" % (base, n, ext)
             autofill_shot(new_row)
-            rows.append(new_row)
+            # Insert after a specific row if after_file is provided
+            after_file = (data.get("after_file") or "").strip()
+            pos = len(rows)
+            if after_file:
+                for i, r in enumerate(rows):
+                    if (r.get("output_file") or "").strip() == after_file:
+                        pos = i + 1
+                        break
+            rows.insert(pos, new_row)
             write_csv(rows, fieldnames)
         self._json({"ok": True, "row": new_row})
 
