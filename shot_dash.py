@@ -2762,7 +2762,8 @@ class Handler(BaseHTTPRequestHandler):
         thumb_file = None
         try:
             cat = hero_ref_category(hero)
-            cat_dir = os.path.join(refs_dir(), cat)
+            hero_slug = _slug(hero.get("name", hero_id)) or _slug(hero_id) or "asset"
+            cat_dir = os.path.join(refs_dir(), cat, hero_slug)
             os.makedirs(cat_dir, exist_ok=True)
             # Name by subject: sequential counter + hero-name slug (e.g. 001_ben_motel_divorce.png)
             existing = {os.path.splitext(f)[0] for f in os.listdir(cat_dir) if f.endswith('.png')} if os.path.isdir(cat_dir) else set()
@@ -2775,7 +2776,7 @@ class Handler(BaseHTTPRequestHandler):
             
             with open(os.path.join(cat_dir, ref_name), "wb") as rf:
                 rf.write(img_bytes)
-            thumb_file = cat + "/" + ref_name
+            thumb_file = cat + "/" + hero_slug + "/" + ref_name
             with HEROES_LOCK:
                 heroes = load_heroes()
                 h = hero_by_id(heroes, hero_id)
