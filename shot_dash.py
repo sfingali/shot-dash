@@ -2566,15 +2566,7 @@ class Handler(BaseHTTPRequestHandler):
             new_row["output_file"] = new_of
             new_row["version_history"] = "[]"
             new_row["shotlist_ref"] = ""
-            sc = new_row.get("scene_number", "")
-            existing = []
-            for r in rows:
-                if r.get("scene_number") == sc:
-                    try:
-                        existing.append(int(r.get("shot_number") or 0))
-                    except ValueError:
-                        pass
-            new_row["shot_number"] = str(max(existing) + 1 if existing else 1)
+            new_row["shot_number"] = row.get("shot_number", "1")
             src = None
             fd = frames_dir()
             if of:
