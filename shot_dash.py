@@ -2774,7 +2774,10 @@ class Handler(BaseHTTPRequestHandler):
                 n += 1
                 ref_name = "%03d_%s.png" % (n, hero_slug)
             
-            with open(os.path.join(cat_dir, ref_name), "wb") as rf:
+            out_path = os.path.join(cat_dir, ref_name)
+            if os.path.exists(out_path):
+                raise ApiError("File already exists: " + ref_name + " — this should not happen. Report this bug.", 409)
+            with open(out_path, "wb") as rf:
                 rf.write(img_bytes)
             thumb_file = cat + "/" + hero_slug + "/" + ref_name
             with HEROES_LOCK:
