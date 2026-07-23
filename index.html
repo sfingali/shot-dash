@@ -463,6 +463,24 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 </div>
 </div>
 
+<div class="modal" id="descGenAllModal">
+<div class="modal-inner">
+<h3 id="descGenAllTitle">Generate reference images</h3>
+<div class="field"><label for="descGenAllPrompt">Style prompt</label>
+  <textarea id="descGenAllPrompt" rows="4"></textarea>
+  <div class="hint">Will be appended after each hero description. Edit or clear to change the style.</div>
+</div>
+<div class="field"><label for="descGenAllQuality">Quality</label>
+  <select id="descGenAllQuality"></select>
+  <div class="hint" id="descGenAllCost"></div>
+</div>
+<div class="modal-foot">
+  <button class="btn" data-act="close" data-modal="descGenAllModal">Cancel</button>
+  <button class="btn btn-accent" data-act="descGenAllRun">Generate All</button>
+</div>
+</div>
+</div>
+
 <div class="modal" id="editModal">
 <div class="modal-inner">
 <h3>Image-to-image edit</h3>
@@ -989,7 +1007,7 @@ function fillQualitySelects(){
   const opts = defOpt + S.qualities.map(q =>
     '<option value="' + escA(q) + '">' + esc(q) +
     (qualityCost(q) ? ' — ' + esc(qualityCost(q)) : '') + '</option>').join('');
-  ['genQualitySel','refGenQuality','editQuality','refEditQuality','heroGenQuality','refVarQuality'].forEach(id => {
+  ['genQualitySel','refGenQuality','editQuality','refEditQuality','heroGenQuality','refVarQuality','descGenAllQuality'].forEach(id => {
     const sel = $(id);
     const cur = sel.value;
     sel.innerHTML = opts;
@@ -1001,6 +1019,7 @@ function fillQualitySelects(){
   updateRefEditCost();
   updateHeroGenCost();
   updateRefVarCost();
+  updateDescGenAllCost();
 }
 function updateEditCost(){
   const q = $('editQuality').value || S.settings.quality || 'medium';
@@ -1034,6 +1053,14 @@ function updateHeroGenCost(){
   const per = parseFloat((qualityCost(q) || '').replace('$', '')) || 0;
   $('heroGenCost').textContent = per
     ? 'Estimated cost: ' + qualityCost(q) + ' × ' + count + ' ≈ $' + (per * count).toFixed(2)
+    : '';
+}
+function updateDescGenAllCost(){
+  const q = $('descGenAllQuality').value || S.settings.quality || 'medium';
+  const per = parseFloat((qualityCost(q) || '').replace('$', '')) || 0;
+  const pending = S.heroes.filter(h => !h.archived && descInCat(h, S.descCat) && (h.description || '').trim());
+  $('descGenAllCost').textContent = per && pending.length
+    ? 'Estimated total: ' + pending.length + ' × ' + qualityCost(q) + ' ≈ $' + (per * pending.length).toFixed(2)
     : '';
 }
 function updateRefVarCost(){
@@ -2892,7 +2919,18 @@ const ACTIONS = {
     const label = (DESC_CATS.find(c => c[0] === cat) || [cat, cat])[1];
     const pending = S.heroes.filter(h => !h.archived && descInCat(h, cat) && (h.description || '').trim());
     if (!pending.length){ toast('No described heroes in ' + label, {error: true}); return; }
-    const q = S.settings.quality || 'medium';
+    $('descGenAllTitle').textContent = 'Generate ' + pending.length + ' reference images for ' + label;
+    $('descGenAllPrompt').value = 'Desaturated palette, cool shadows. Photorealistic cinematic still from an indie horror film. Scope 2.39:1.';
+    openModal('descGenAllModal');
+    $('descGenAllPrompt').focus();
+  },
+  descGenAllRun: async () => {
+    const cat = S.descCat;
+    const label = (DESC_CATS.find(c => c[0] === cat) || [cat, cat])[1];
+    const pending = S.heroes.filter(h => !h.archived && descInCat(h, cat) && (h.description || '').trim());
+    const stylePrompt = $('descGenAllPrompt').value.trim();
+    closeModal('descGenAllModal');
+    const q = $('descGenAllQuality').value || S.settings.quality || 'medium';
     const cost = qualityCost(q);
     if (!await confirmDlg('Generate ' + pending.length + ' reference image' + (pending.length === 1 ? '' : 's') +
       ' for ' + label + ' at ' + q + ' quality' + (cost ? ' — est. ' + cost + ' each' : '') + '?', 'Generate All')) return;
@@ -2900,9 +2938,9 @@ const ACTIONS = {
     let ok = 0, fail = 0;
     for (const h of pending){
       try {
-        // No quality/apply_style here — the backend falls back to the project
-        // default, which is what the confirm dialog quoted.
-        await api('api/generate_from_hero', {hero_id: h.id, prompt: h.name + ': ' + h.description});
+        let prompt = h.name + ': ' + h.description;
+        if (stylePrompt) prompt += '. ' + stylePrompt;
+        await api('api/generate_from_hero', {hero_id: h.id, prompt: prompt});
         ok++;
       } catch (e){ fail++; }
     }
@@ -2967,6 +3005,7 @@ $('heroGenQuality').addEventListener('change', updateHeroGenCost);
 $('heroGenCount').addEventListener('input', updateHeroGenCost);
 $('refVarQuality').addEventListener('change', updateRefVarCost);
 $('refVarCount').addEventListener('input', updateRefVarCost);
+$('descGenAllQuality').addEventListener('change', updateDescGenAllCost);
 function onExportChange(e){
   const v = e.target.value;
   if (!v) return;
