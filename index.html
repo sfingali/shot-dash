@@ -417,6 +417,11 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 <div class="field"><label for="newLens">Lens</label>
   <input id="newLens" placeholder="28mm">
 </div>
+<div class="field"><label for="newHeroes">Hero assets</label>
+  <input id="newHeroes" placeholder="e.g. Ben — Motel / Divorce, The Revolver" list="heroTagList">
+  <datalist id="heroTagList"></datalist>
+  <div class="hint">Tag hero assets to inject their descriptions into the prompt. Comma-separated.</div>
+</div>
 <div class="field"><label for="newGens">Variants to create</label>
   <input id="newGens" value="1" type="number" min="1" max="9">
 </div>
@@ -1017,6 +1022,11 @@ async function fetchRefs(){
   renderRefs();
   renderArchive();
   renderStats();
+  // Populate hero tag datalist for create modal
+  const htl = $('heroTagList'); htl.innerHTML = '';
+  S.heroes.filter(h => !h.archived).forEach(h => {
+    const o = document.createElement('option'); o.value = h.name; htl.appendChild(o);
+  });
   updateBadges();
 }
 async function fetchShotlist(){
@@ -1343,8 +1353,26 @@ async function generateShot(){
   const found = shotByKey(key);
   const p = payloadFor(key);
   if (!found || !p) return;
-  const label = (found.shot._frame_url ? 'Regenerating' : 'Generating') + ' sc ' + (found.shot.scene_number || '?');
+  const isRegen = !!found.shot._frame_url;
+  const sc = found.shot.scene_number || '?';
   const quality = $('genQualitySel').value;   // '' = project default
+  const q = quality || S.settings.quality || 'medium';
+  const cost = qualityCost(q);
+  // Confirm before firing a billable render / showing the overlay. This is
+  // the ONLY generate action without a modal, so previously the ⚡/🔄 button
+  // AND a bare 'g' keypress called startJob() synchronously — a stray 'g'
+  // (focus not in an input) launched a render and threw the full-screen
+  // overlay up instantly, "skipping any modal interaction". The overlay must
+  // only appear AFTER the user explicitly submits, like every other flow.
+  const ok = await confirmDlg(
+    (isRegen ? 'Regenerate' : 'Generate') + ' storyboard for scene ' + sc +
+    ' at ' + q + ' quality' + (cost ? ' — est. ' + cost : '') + '?',
+    isRegen ? 'Regenerate' : 'Generate');
+  if (!ok) return;
+  // Selection/busy state can change while the dialog is open — re-check so we
+  // never launch against a shot the user has navigated away from.
+  if (S.selectedKey !== key || S.busyKeys.has(key)) return;
+  const label = (isRegen ? 'Regenerating' : 'Generating') + ' sc ' + sc;
   const end = startJob(label, key);
   try {
     const d = await api('api/generate', quality ? Object.assign({quality}, p) : p);
@@ -1460,12 +1488,13 @@ async function createShot(){
   const lens = $('newLens').value.trim() || '28mm';
   const gens = Math.min(9, Math.max(1, parseInt($('newGens').value, 10) || 1));
   const status = $('newStatus').value;
+  const heroTags = $('newHeroes').value.trim();
   closeModal('createModal');
   try {
     let firstFile = null;
     for (let g = 0; g < gens; g++){
       const fn = g === 0 ? fname : fname.replace(/(_v\d+)?(\.[^.]+)$/, '') + '_alt' + (g + 1) + '_v1.png';
-      const d = await api('api/create', {scene_number: sc, output_file: fn, lens, verbatim_instructions: instr, status});
+      const d = await api('api/create', {scene_number: sc, output_file: fn, lens, verbatim_instructions: instr, status, hero_tags: heroTags});
       if (!firstFile) firstFile = d.row && d.row.output_file;
     }
     toast(gens > 1 ? 'Created ' + gens + ' storyboards' : 'Storyboard created');
