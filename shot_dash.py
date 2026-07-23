@@ -1925,6 +1925,26 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/export":
             self._export(parsed)
 
+        elif path.startswith("/api/thumb/frame/"):
+            rel = urllib.parse.unquote(path[len("/api/thumb/frame/"):])
+            filepath = safe_path(frames_dir(), rel)
+            if not filepath:
+                filepath = find_in_tree(frames_dir(), os.path.basename(rel))
+            if filepath:
+                self._serve_image(make_thumbnail(filepath, frames_dir(), 200))
+            else:
+                self._error("Frame not found: " + rel, 404)
+
+        elif path.startswith("/api/thumb/ref/"):
+            rel = urllib.parse.unquote(path[len("/api/thumb/ref/"):])
+            filepath = safe_path(refs_dir(), rel)
+            if not filepath:
+                filepath = find_in_tree(refs_dir(), os.path.basename(rel))
+            if filepath:
+                self._serve_image(make_thumbnail(filepath, refs_dir(), 150))
+            else:
+                self._error("Reference not found: " + rel, 404)
+
         elif path.startswith("/api/frame/"):
             rel = urllib.parse.unquote(path[len("/api/frame/"):])
             filepath = safe_path(frames_dir(), rel)
