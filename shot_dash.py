@@ -2579,6 +2579,41 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "job_id": job_id, "count": len(targets),
                     "hero": hero.get("name", hero_id)})
 
+    # - generate from hero description -
+    def api_generate_from_hero(self, data):
+        hero_id = (data.get("hero_id") or "").strip()
+        prompt = (data.get("prompt") or "").strip()
+        quality = data.get("quality", "").strip()
+        if not hero_id:
+            raise ApiError("Missing hero_id")
+        if not prompt:
+            raise ApiError("Missing prompt")
+        hero = hero_by_id(load_heroes(), hero_id)
+        if hero is None:
+            raise ApiError("Unknown hero: " + hero_id, 404)
+        key = require_openai_key()
+        img_bytes = openai_generate_image(prompt, quality if quality in QUALITY_LEVELS else active_quality(), key)
+        scene = "ref"
+        output_file, _ = next_version_name("ref_gen.png", scene)
+        fd = frames_dir()
+        os.makedirs(fd, exist_ok=True)
+        out_path = os.path.join(fd, output_file)
+        with open(out_path, "wb") as of:
+            of.write(img_bytes)
+        new_shot = create_shot_row({
+            "scene_number": scene,
+            "output_file": output_file,
+            "prompt": prompt,
+            "hero_tags": str(hero.get("name", hero_id)),
+            "status": "generated",
+            "generation_method": "generate",
+            "endpoint": "/v1/images/generations",
+            "estimated_cost": QUALITY_COST.get(active_quality(), "$0.04"),
+            "quality": active_quality(),
+            "iteration_count": "1",
+        })
+        self._json({"ok": True, "output_file": output_file, "shot": new_shot})
+
     # - shotlist endpoints -
     def api_shotlist_create(self, data):
         with SHOTLIST_LOCK:
@@ -2919,6 +2954,7 @@ Handler.POST_ROUTES = {
     "/api/category_add": Handler.api_category_add,
     "/api/duplicate": Handler.api_duplicate,
     "/api/mass_regen": Handler.api_mass_regen,
+    "/api/generate_from_hero": Handler.api_generate_from_hero,
     "/api/shotlist_create": Handler.api_shotlist_create,
     "/api/shotlist_update": Handler.api_shotlist_update,
     "/api/shotlist_delete": Handler.api_shotlist_delete,
