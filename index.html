@@ -1302,6 +1302,8 @@ async function generateShot(){
 }
 function showEditPrompt(){
   if (!S.selectedKey) return;
+  $('genOverlay').classList.remove('on');
+  overlayJobs = 0;
   $('editInstrErr').classList.remove('on');
   $('editInstr').classList.remove('invalid');
   openModal('editModal');
