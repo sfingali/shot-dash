@@ -1475,6 +1475,10 @@ async function editShot(){
   closeModal('editModal');
   $('editInstr').value = '';
   $('editHeroes').value = '';
+  // Quick re-fetch to ensure latest output_file (avoid 'Shot not found')
+  await fetchShots();
+  const latestP = payloadFor(key);
+  if (!latestP) { toast('Shot moved — refresh and retry.', {error: true}); return; }
   const end = startJob('Editing sc ' + (found.shot.scene_number || '?') + (editCount > 1 ? ' x' + editCount : ''), key);
   try {
     let lastD = null;
@@ -1482,7 +1486,7 @@ async function editShot(){
     // file into version_history. Re-target the payload at the file the last
     // edit produced so iteration N+1 edits the latest version rather than a
     // now-stale key that no longer matches any row's output_file.
-    let curPayload = p;
+    let curPayload = latestP;
     for (let g = 0; g < editCount; g++) {
       const body = Object.assign({edit_instructions: instr}, curPayload);
       if (quality) body.quality = quality;
