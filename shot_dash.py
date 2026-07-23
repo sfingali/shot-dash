@@ -2432,6 +2432,27 @@ class Handler(BaseHTTPRequestHandler):
             write_shotlist(rows)
         self._json({"ok": True, "row": target})
 
+    def api_shotlist_delete(self, data):
+        """Delete one row, addressed by row_index into the Order-sorted
+        list (the same scheme as /api/shotlist_update); the row's Order
+        value may ride along as a staleness check."""
+        idx = data.get("row_index")
+        if not isinstance(idx, int) or isinstance(idx, bool):
+            raise ApiError("Missing row_index")
+        order = str(data.get("Order") if data.get("Order") is not None
+                    else "").strip()
+        with SHOTLIST_LOCK:
+            rows = read_shotlist()
+            sort_shotlist(rows)
+            if idx < 0 or idx >= len(rows):
+                raise ApiError("Shotlist row index out of range", 404)
+            if order and (rows[idx].get("Order") or "").strip() != order:
+                raise ApiError("Shotlist changed on disk — refresh and "
+                               "retry", 409)
+            rows.pop(idx)
+            write_shotlist(rows)
+        self._json({"ok": True})
+
     def api_shotlist_sync(self, data):
         """Create a shotlist row for every Shots-tab shot that doesn't have
         one yet (matched on Setup == output_file)."""
@@ -2672,6 +2693,7 @@ Handler.POST_ROUTES = {
     "/api/mass_regen": Handler.api_mass_regen,
     "/api/shotlist_create": Handler.api_shotlist_create,
     "/api/shotlist_update": Handler.api_shotlist_update,
+    "/api/shotlist_delete": Handler.api_shotlist_delete,
     "/api/shotlist_sync": Handler.api_shotlist_sync,
     "/api/shotlist_import": Handler.api_shotlist_import,
     "/api/hero_create": Handler.api_hero_create,
