@@ -1101,6 +1101,9 @@ function renderGrid(){
   $('gridEmpty').style.display = 'none';
 
   $('grid').innerHTML = list.map(({s, i, key}) => {
+    const thumb = s._frame_url
+      ? '<td style="width:44px;padding:1px 4px"><img src="' + s._frame_url + '" width="40" height="22" loading="lazy" style="display:block;object-fit:cover;border-radius:2px"></td>'
+      : '<td style="width:44px"></td>';
     const cells = SHOT_COLS.map(c => {
       let v = s[c] || '';
       if (c === 'status') return '<td>' + statusPill(v) + '</td>';
@@ -1110,7 +1113,7 @@ function renderGrid(){
       return '<td>' + esc(v) + '</td>';
     }).join('');
     return '<tr draggable="true" data-key="' + escA(key) + '"' +
-      (S.selectedKey === key ? ' class="selected"' : '') + '>' + cells + '</tr>';
+      (S.selectedKey === key ? ' class="selected"' : '') + '>' + thumb + cells + '</tr>';
   }).join('');
   $('count').textContent = list.length === active ? active + ' storyboards' : list.length + ' of ' + active + ' storyboards';
 }
