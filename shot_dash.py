@@ -2638,7 +2638,16 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "job_id": job_id, "count": len(targets),
                     "hero": hero.get("name", hero_id)})
 
-    # - generate from hero description -
+def create_shot_row(data):
+    """Build a new CSV row dict with defaults for all fieldnames."""
+    _, fieldnames = read_csv()
+    row = {f: "" for f in fieldnames}
+    row.update(data)
+    row.setdefault("status", "pending")
+    row.setdefault("generation_method", "generate")
+    return row
+
+# - generate from hero description -
     def api_generate_from_hero(self, data):
         hero_id = (data.get("hero_id") or "").strip()
         prompt = (data.get("prompt") or "").strip()
