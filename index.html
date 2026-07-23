@@ -457,6 +457,10 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <div class="hint">The original is kept; edits are saved as new files in the same category.</div>
   <div class="err" id="refEditErr">Describe the edit first.</div>
 </div>
+<div class="field"><label for="refEditQuality">Quality</label>
+  <select id="refEditQuality"></select>
+  <div class="hint" id="refEditCost"></div>
+</div>
 <div class="field"><label for="refEditCount">Generations</label>
   <input id="refEditCount" value="1" type="number" min="1" max="9">
 </div>
@@ -804,7 +808,7 @@ function fillQualitySelects(){
   const opts = defOpt + S.qualities.map(q =>
     '<option value="' + escA(q) + '">' + esc(q) +
     (qualityCost(q) ? ' — ' + esc(qualityCost(q)) : '') + '</option>').join('');
-  ['genQualitySel','refGenQuality','editQuality'].forEach(id => {
+  ['genQualitySel','refGenQuality','editQuality','refEditQuality'].forEach(id => {
     const sel = $(id);
     const cur = sel.value;
     sel.innerHTML = opts;
@@ -813,6 +817,7 @@ function fillQualitySelects(){
   updateGenCost();
   updateRefGenCost();
   updateEditCost();
+  updateRefEditCost();
 }
 function updateEditCost(){
   const q = $('editQuality').value || S.settings.quality || 'medium';
@@ -829,6 +834,14 @@ function updateRefGenCost(){
   const count = Math.min(9, Math.max(1, parseInt($('refGenCount').value, 10) || 1));
   const per = parseFloat((qualityCost(q) || '').replace('$', '')) || 0;
   $('refGenCost').textContent = per
+    ? 'Estimated cost: ' + qualityCost(q) + ' × ' + count + ' ≈ $' + (per * count).toFixed(2)
+    : '';
+}
+function updateRefEditCost(){
+  const q = $('refEditQuality').value || S.settings.quality || 'medium';
+  const count = Math.min(9, Math.max(1, parseInt($('refEditCount').value, 10) || 1));
+  const per = parseFloat((qualityCost(q) || '').replace('$', '')) || 0;
+  $('refEditCost').textContent = per
     ? 'Estimated cost: ' + qualityCost(q) + ' × ' + count + ' ≈ $' + (per * count).toFixed(2)
     : '';
 }
@@ -1522,6 +1535,7 @@ function showRefEdit(fn){
   S.refEditFile = fn;
   $('refEditErr').classList.remove('on');
   $('refEditInstr').classList.remove('invalid');
+  updateRefEditCost();
   openModal('refEditModal');
   $('refEditInstr').focus();
 }
@@ -1535,11 +1549,14 @@ async function editRef(){
   const fn = S.refEditFile;
   if (!fn) return;
   const count = Math.min(9, Math.max(1, parseInt($('refEditCount').value, 10) || 1));
+  const quality = $('refEditQuality').value;   // '' = project default
   S.refEditFile = null;
   closeModal('refEditModal');
   const end = startJob('Editing ref: ' + fn.split('/').pop() + (count > 1 ? ' ×' + count : ''));
   try {
-    const d = await api('/api/ref_edit', {file: fn, edit_instructions: instr, count});
+    const body = {file: fn, edit_instructions: instr, count};
+    if (quality) body.quality = quality;
+    const d = await api('/api/ref_edit', body);
     toast('Saved ' + d.files.length + ' edit' + (d.files.length > 1 ? 's' : ''));
     $('refEditInstr').value = '';
     fetchRefs();
@@ -2071,6 +2088,8 @@ $('genQualitySel').addEventListener('change', updateGenCost);
 $('refGenQuality').addEventListener('change', updateRefGenCost);
 $('editQuality').addEventListener('change', updateEditCost);
 $('refGenCount').addEventListener('input', updateRefGenCost);
+$('refEditQuality').addEventListener('change', updateRefEditCost);
+$('refEditCount').addEventListener('input', updateRefEditCost);
 function onExportChange(e){
   const v = e.target.value;
   if (!v) return;

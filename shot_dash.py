@@ -2302,6 +2302,7 @@ class Handler(BaseHTTPRequestHandler):
         if not filepath:
             raise ApiError("Reference not found: " + rel, 404)
         count = max(1, min(9, int(data.get("count") or 1)))
+        quality = requested_quality(data)
         key = require_openai_key()
         with open(filepath, "rb") as f:
             source_bytes = f.read()
@@ -2311,7 +2312,7 @@ class Handler(BaseHTTPRequestHandler):
         stamp = time.strftime("%Y%m%d_%H%M%S")
         files = []
         for n in range(count):
-            img_bytes = openai_edit_image(source_bytes, prompt, key)
+            img_bytes = openai_edit_image(source_bytes, prompt, key, quality)
             fname = "%s_edit_%s_%d.png" % (stem, stamp, n + 1)
             with open(os.path.join(os.path.dirname(filepath), fname), "wb") as of:
                 of.write(img_bytes)
