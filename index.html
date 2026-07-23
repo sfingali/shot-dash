@@ -222,6 +222,17 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 @keyframes blink{50%{opacity:.25}}
 .job .t{color:var(--text-dim);font-weight:400;font-variant-numeric:tabular-nums}
 
+/* ============ Generation overlay (image generate/edit in flight) ============ */
+#genOverlay{display:none;position:fixed;inset:0;background:rgba(5,6,7,.72);z-index:290;align-items:center;justify-content:center;flex-direction:column;gap:var(--s4)}
+#genOverlay.on{display:flex}
+#genOverlay .spin{width:44px;height:44px;border:4px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#genOverlay .txt{color:#fff;font-size:16px;font-weight:600;letter-spacing:.02em}
+#genOverlay .bar{width:220px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden;animation:pulseBar 1.6s ease-in-out infinite}
+#genOverlay .bar i{display:block;height:100%;width:40%;background:var(--accent);animation:slide 1.2s ease-in-out infinite}
+@keyframes pulseBar{50%{opacity:.55}}
+#genOverlay .sub{color:var(--text-dim);font-size:12px;font-variant-numeric:tabular-nums}
+
 /* ============ Responsive ============ */
 @media(max-width:960px){
   .viewer{flex-direction:column;max-height:60vh;overflow-y:auto}
@@ -608,6 +619,12 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 
 <div id="toasts"></div>
 <div id="jobs"></div>
+<div id="genOverlay" role="alert" aria-busy="true">
+  <div class="spin" aria-hidden="true"></div>
+  <div class="txt" id="genOverlayTxt">Generating image&hellip;</div>
+  <div class="bar" aria-hidden="true"><i></i></div>
+  <div class="sub" id="genOverlaySub"></div>
+</div>
 <script>
 'use strict';
 /* ============ State ============ */
@@ -711,23 +728,25 @@ function toast(msg, opts){
   return box;
 }
 
-/* ============ Job chips (long-running API calls) ============ */
+/* ============ Generation overlay (long-running image generate/edit) ============ */
+let overlayJobs = 0;
 function startJob(label, key){
   if (key) S.busyKeys.add(key);
-  const chip = document.createElement('div');
-  chip.className = 'job';
-  chip.innerHTML = '<span class="dot"></span><span></span><span class="t">0s</span>';
-  chip.children[1].textContent = label;
-  $('jobs').appendChild(chip);
+  overlayJobs++;
+  $('genOverlayTxt').textContent = /^Editing/.test(label) ? 'Editing image…' : 'Generating image…';
+  $('genOverlay').classList.add('on');
   const t0 = Date.now();
-  const tick = setInterval(() => {
+  const sub = () => {
     const s = Math.round((Date.now() - t0) / 1000);
-    chip.querySelector('.t').textContent = (s >= 60 ? Math.floor(s/60) + 'm ' + (s%60) + 's' : s + 's');
-  }, 1000);
+    $('genOverlaySub').textContent = label + ' — ' + (s >= 60 ? Math.floor(s/60) + 'm ' + (s%60) + 's' : s + 's');
+  };
+  sub();
+  const tick = setInterval(sub, 1000);
   syncBusyUI();
   return function endJob(){
     clearInterval(tick);
-    chip.remove();
+    overlayJobs = Math.max(0, overlayJobs - 1);
+    if (!overlayJobs) $('genOverlay').classList.remove('on');
     if (key) S.busyKeys.delete(key);
     syncBusyUI();
   };
