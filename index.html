@@ -1183,7 +1183,7 @@ function renderGrid(){
       let v = s[c] || '';
       if (c === 'status') return '<td>' + statusPill(v) + '</td>';
       if (c === 'hero_tags') return '<td>' + heroBadges(v) + '</td>';
-      if (c === 'verbatim_instructions') v = String(v).substring(0, 80);
+      if (c === 'verbatim_instructions') v = String(v).substring(0, 140);
       if (c === 'output_file') return '<td class="mono">' + esc(v) + (s._frame_url ? ' 📷' : '') + '</td>';
       return '<td>' + esc(v) + '</td>';
     }).join('');
@@ -1263,7 +1263,7 @@ function clearViewer(){
 function infoRow(label, html){ return '<div class="row"><span class="label">' + label + '</span>' + html + '</div>'; }
 function editableSpan(key, field, value, placeholder){
   return '<span class="editable" data-field="' + escA(field) + '" data-key="' + escA(key) + '" title="Click to edit">' +
-    (value ? esc(String(value).substring(0, 240)) : (placeholder || '—')) + '</span>';
+    (value ? esc(String(value)) : (placeholder || '—')) + '</span>';
 }
 function selectShot(key, keepScroll){
   const found = shotByKey(key);
@@ -1291,10 +1291,10 @@ function selectShot(key, keepScroll){
     infoRow('Heroes', heroBadges(s.hero_tags) + ' ' + editableSpan(key, 'hero_tags', s.hero_tags, 'none — click to tag')),
     infoRow('Location', esc(s.location || '—')),
     infoRow('Camera', meta),
-    s.fountain_text ? infoRow('Fountain', '<span style="white-space:pre-wrap;font-style:italic;color:var(--text-dim)">' + esc(String(s.fountain_text).substring(0, 400)) + '</span>') : '',
+    s.fountain_text ? infoRow('Fountain', '<span style="white-space:pre-wrap;font-style:italic;color:var(--text-dim)">' + esc(String(s.fountain_text)) + '</span>') : '',
     infoRow('Curated', editableSpan(key, 'curated_description', s.curated_description)),
     infoRow('Instructions', editableSpan(key, 'verbatim_instructions', s.verbatim_instructions)),
-    s.prompt ? infoRow('API prompt', '<span style="white-space:pre-wrap;color:var(--text-dim)">' + esc(String(s.prompt).substring(0, 400)) + '</span>') : '',
+    s.prompt ? infoRow('API prompt', '<span style="white-space:pre-wrap;color:var(--text-dim)">' + esc(String(s.prompt)) + '</span>') : '',
     s.shotlist_ref ? infoRow('Shotlist', 'row ' + esc(s.shotlist_ref)) : '',
     s.output_file ? infoRow('File', '<span class="mono">' + esc(s.output_file) + '</span>') : ''
   ].join('');
