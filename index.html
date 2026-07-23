@@ -2273,15 +2273,17 @@ function descField(h, field){
     (v ? esc(v) : '—') + '</span></div>';
 }
 const DESC_CATS = [['characters','Characters'],['locations','Locations'],['hero_props','Props']];
+// 'hero_props' is the catch-all — heroes with a blank, vehicle or other
+// category land there instead of being invisible in every tab.
+const descInCat = (h, cat) => cat === 'hero_props'
+  ? (h.category !== 'characters' && h.category !== 'locations')
+  : h.category === cat;
 function renderDescPanel(){
   const all = S.heroes.filter(h => !h.archived);
-  // 'hero_props' is the catch-all — heroes with a blank, vehicle or other
-  // category land there instead of being invisible in every tab.
-  const inCat = (h, cat) => cat === 'hero_props'
-    ? (h.category !== 'characters' && h.category !== 'locations')
-    : h.category === cat;
+  const inCat = descInCat;
   const heroes = all.filter(h => inCat(h, S.descCat));
-  let html = '<div class="ref-cat"><h3>Descriptions<span class="n">' + heroes.length + '</span></h3>' +
+  const describable = heroes.filter(h => (h.description || '').trim()).length;
+  let html ='<div class="ref-cat"><h3>Descriptions<span class="n">' + heroes.length + '</span></h3>' +
     '<div class="tabs" style="margin-bottom:var(--s3)">' +
     DESC_CATS.map(([cat, label]) =>
       '<button class="tab' + (S.descCat === cat ? ' active' : '') + '" data-desccat="' + escA(cat) + '">' +
@@ -2289,6 +2291,9 @@ function renderDescPanel(){
     '</div>' +
     '<div style="margin-bottom:var(--s3);display:flex;gap:var(--s2);align-items:center">' +
     '<button class="btn btn-accent" data-act="heroNew">+ New hero asset</button>' +
+    '<button class="btn btn-accent" data-act="descGenAll"' + (describable ? '' : ' disabled') +
+    ' title="Generate one reference image for every described hero in this tab">&#9889; Generate All' +
+    (describable ? ' <span class="n">' + describable + '</span>' : '') + '</button>' +
     '<span class="count">Canonical text descriptions injected into storyboard prompts. Click any field to edit — saves on blur, Esc cancels.</span>' +
     '</div>';
   if (!heroes.length){
@@ -2881,6 +2886,29 @@ const ACTIONS = {
     end();
     toast('Generated: ' + ok + ' ok' + (fail ? ', ' + fail + ' failed' : ''));
     refreshData();
+  },
+  descGenAll: async () => {
+    const cat = S.descCat;
+    const label = (DESC_CATS.find(c => c[0] === cat) || [cat, cat])[1];
+    const pending = S.heroes.filter(h => !h.archived && descInCat(h, cat) && (h.description || '').trim());
+    if (!pending.length){ toast('No described heroes in ' + label, {error: true}); return; }
+    const q = S.settings.quality || 'medium';
+    const cost = qualityCost(q);
+    if (!await confirmDlg('Generate ' + pending.length + ' reference image' + (pending.length === 1 ? '' : 's') +
+      ' for ' + label + ' at ' + q + ' quality' + (cost ? ' — est. ' + cost + ' each' : '') + '?', 'Generate All')) return;
+    const end = startJob('Generating ' + pending.length + ' reference image' + (pending.length === 1 ? '' : 's') + ' — ' + label);
+    let ok = 0, fail = 0;
+    for (const h of pending){
+      try {
+        // No quality/apply_style here — the backend falls back to the project
+        // default, which is what the confirm dialog quoted.
+        await api('api/generate_from_hero', {hero_id: h.id, prompt: h.name + ': ' + h.description});
+        ok++;
+      } catch (e){ fail++; }
+    }
+    end();
+    toast('Generated: ' + ok + ' ok' + (fail ? ', ' + fail + ' failed' : ''), fail && !ok ? {error: true} : {});
+    await fetchRefs();
   },
   genFromHero: async () => {
     const prompt = $('heroGenPrompt').value.trim();
