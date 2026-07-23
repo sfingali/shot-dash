@@ -1549,7 +1549,19 @@ async function createShot(){
     $('newInstr').value = ''; $('newScene').value = ''; autoGenFilename();
     await refreshData();
     if (firstFile) selectShot(firstFile);
-  } catch (e){ toast(e.message, {error: true}); }
+  } catch (e){
+    toast(e.message, {error: true});
+    const msg = (e.message || '').toLowerCase();
+    if (msg.includes('safety') || msg.includes('content') || msg.includes('rejected') || msg.includes('blocked')) {
+      openModal('createModal');
+      $('newInstr').value = instr;
+      $('newScene').value = sc;
+      $('newLens').value = lens;
+      $('newHeroes').value = heroTags;
+      $('newGens').value = String(gens);
+      $('newFile').value = fname;
+    }
+  }
 }
 
 /* ============ Inline field editing ============ */
