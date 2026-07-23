@@ -448,7 +448,7 @@ def hero_fragments(shot):
 # -- Shotlist (24-column VFX breakdown) -------------------------------------
 SHOTLIST_COLUMNS = [
     "Order", "Scene", "Setup", "I/E", "Location", "Time of Day",
-    "Description", "Shot Type/Framing", "Camera Movement",
+    "Description", "Fountain Excerpt", "Shot Type/Framing", "Camera Movement",
     "Lens/Focal Length", "Camera Angle", "Characters in Shot",
     "Duration(seconds)", "Page(s)", "Length(8ths)", "Shoot Day",
     "Sequence", "VFX Work", "Complexity", "Asset(s)",
@@ -540,6 +540,7 @@ def shot_to_shotlist_row(shot, order):
     ie, loc, tod = parse_slugline(shot.get("location") or "")
     desc = (shot.get("curated_description") or
             shot.get("verbatim_instructions") or "")
+    scene_text = canon_scene_text(shot.get("scene_number"))
     row = {c: "" for c in SHOTLIST_COLUMNS}
     row.update({
         "Order": "%g" % order,
@@ -549,6 +550,7 @@ def shot_to_shotlist_row(shot, order):
         "Location": loc or (shot.get("location") or ""),
         "Time of Day": tod,
         "Description": desc.strip()[:500],
+        "Fountain Excerpt": scene_text[:250],
         "Lens/Focal Length": shot.get("lens") or "",
         "Characters in Shot": shot.get("characters") or "",
         "Asset(s)": shot.get("hero_tags") or "",
@@ -556,6 +558,11 @@ def shot_to_shotlist_row(shot, order):
         "Cost Each": "0",
         "Cost Gross": "0",
     })
+    if scene_text:
+        # Rough page estimate: ~2500 chars per screenplay page, floor 1/8.
+        pages = max(0.125, round(len(scene_text) / 2500.0, 3))
+        row["Page(s)"] = "%g" % pages
+        row["Length(8ths)"] = "%g" % round(pages * 8, 3)
     return row
 
 
@@ -1179,7 +1186,7 @@ def save_categories(cats):
     os.replace(tmp, categories_path())
 
 
-def _canon_texts():
+def _canon_texts(exts=(".fountain", ".txt", ".md")):
     """Raw text of fountain / canon / markdown docs in the project's canon
     dir. Best effort — the canon dir may not exist for new projects."""
     texts = []
@@ -1188,7 +1195,7 @@ def _canon_texts():
         try:
             for p in sorted(Path(cd).iterdir()):
                 if (p.is_file() and
-                        p.suffix.lower() in (".fountain", ".txt", ".md")):
+                        p.suffix.lower() in exts):
                     try:
                         texts.append(p.read_text(errors="replace")[:800000])
                     except OSError:
@@ -1243,6 +1250,44 @@ def canon_scenes():
         for sid in sorted(SCENE_LOOKUP, key=skey):
             add(sid, SCENE_LOOKUP[sid]["location"])
     return scenes
+
+
+def canon_scene_text(scene_number):
+    """Raw action/dialogue text of one scene: the body between its scene
+    header and the next header in the canon dir's .fountain files, falling
+    back to scene_text.json (SCENE_TEXT). The header line itself is
+    stripped so callers get body text only; '' when the scene is unknown."""
+    sc = str(scene_number or "").strip().upper()
+    if not sc:
+        return ""
+    head_re = re.compile(r"^\s*(\d+[A-Za-z]?)\.\s+\S")
+    slug_num_re = re.compile(r"^\s*(?:INT|EXT|EST|I/E)[\./\s].*?"
+                             r"#(\d+[A-Za-z]?)#\s*$", re.I)
+
+    def line_scene(line):
+        m = head_re.match(line) or slug_num_re.match(line)
+        return m.group(1).upper() if m else None
+
+    for text in _canon_texts(exts=(".fountain",)):
+        lines = text.splitlines()
+        start = None
+        for i, line in enumerate(lines):
+            lsc = line_scene(line)
+            if start is None:
+                if lsc == sc:
+                    start = i + 1
+            elif lsc is not None:
+                return "\n".join(lines[start:i]).strip()
+        if start is not None:
+            return "\n".join(lines[start:]).strip()
+    body = (SCENE_TEXT.get(sc) or SCENE_TEXT.get(sc.lower()) or "").strip()
+    if body:
+        # scene_text.json entries start with the slugline ('INT. ... #N#')
+        first, _, rest = body.partition("\n")
+        if re.match(r"^\s*(INT|EXT|EST|I/E)[\.\s/]", first, re.I):
+            return rest.strip()
+        return body
+    return ""
 
 
 def canon_sluglines():
