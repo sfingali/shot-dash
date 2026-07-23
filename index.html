@@ -198,7 +198,7 @@ textarea.d-inp{min-height:64px;resize:vertical}
 .mini-spin{width:22px;height:22px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--accent);border-radius:50%;animation:spin .9s linear infinite;flex-shrink:0}
 
 /* ============ Modals ============ */
-.modal{display:none;position:fixed;inset:0;background:rgba(5,6,7,.85);z-index:100;align-items:center;justify-content:center}
+.modal{display:none;position:fixed;inset:0;background:rgba(5,6,7,.85);z-index:300;align-items:center;justify-content:center}
 .modal.open{display:flex}
 .modal-inner{background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--r2);padding:var(--s5);max-width:540px;width:92%;max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.5)}
 .modal-inner h3{color:var(--accent);font-size:14px;margin-bottom:var(--s4)}
@@ -2273,7 +2273,7 @@ $('archiveGrid').addEventListener('click', async e => {
 </script>
 <script>
 /* ============ Modals ============ */
-function openModal(id){ $(id).classList.add('open'); }
+function openModal(id){ $('genOverlay').classList.remove('on'); overlayJobs=0; $(id).classList.add('open'); }
 function closeModal(id){ $(id).classList.remove('open'); if (id === 'confirmModal') settleConfirm(false); }
 function anyModalOpen(){ return !!document.querySelector('.modal.open'); }
 document.querySelectorAll('.modal').forEach(m => {
