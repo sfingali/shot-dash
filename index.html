@@ -1302,11 +1302,21 @@ async function generateShot(){
 }
 function showEditPrompt(){
   if (!S.selectedKey) return;
+  // Aggressively clear any stale state
   $('genOverlay').classList.remove('on');
   overlayJobs = 0;
+  S.busyKeys.clear();
+  syncBusyUI();
+  // Clear and focus
   $('editInstrErr').classList.remove('on');
   $('editInstr').classList.remove('invalid');
-  openModal('editModal');
+  $('editInstr').value = '';
+  // Force modal visible
+  const modal = $('editModal');
+  modal.style.display = 'flex';
+  modal.style.alignItems = 'center';
+  modal.style.justifyContent = 'center';
+  modal.style.zIndex = '999';
   $('editInstr').focus();
 }
 async function editShot(){
@@ -2276,7 +2286,7 @@ $('archiveGrid').addEventListener('click', async e => {
 <script>
 /* ============ Modals ============ */
 function openModal(id){ $('genOverlay').classList.remove('on'); overlayJobs=0; $(id).classList.add('open'); }
-function closeModal(id){ $(id).classList.remove('open'); if (id === 'confirmModal') settleConfirm(false); }
+function closeModal(id){ const m = $(id); m.classList.remove('open'); m.style.display = ''; m.style.zIndex = ''; if (id === 'confirmModal') settleConfirm(false); }
 function anyModalOpen(){ return !!document.querySelector('.modal.open'); }
 document.querySelectorAll('.modal').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) closeModal(m.id); });
