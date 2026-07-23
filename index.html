@@ -688,6 +688,7 @@ const S = {
   refSelCat: 'uncategorized', // '' = all
   treeOpen: new Set(),  // expanded tree roots
   refView: 'refs',      // 'refs' | 'heroes'
+  descCat: 'characters', // descriptions-panel category filter
   refEditFile: null,
   heroEditId: null,
 };
@@ -1606,6 +1607,7 @@ $('refsGrid').addEventListener('click', async e => {
   const edit = e.target.closest('[data-edit]');
   const desc = e.target.closest('[data-desc]');
   const dval = e.target.closest('[data-dfield]');
+  const dcat = e.target.closest('[data-desccat]');
   const view = e.target.closest('[data-view]');
   const hedit = e.target.closest('[data-hedit]');
   const hdel = e.target.closest('[data-hdel]');
@@ -1637,6 +1639,9 @@ $('refsGrid').addEventListener('click', async e => {
       showRefEdit(edit.getAttribute('data-edit'));
     } else if (desc){
       describeRef(desc.getAttribute('data-desc'));
+    } else if (dcat){
+      S.descCat = dcat.getAttribute('data-desccat');
+      renderDescPanel();
     } else if (dval){
       startDescEdit(dval);
     } else if (hedit){
@@ -1877,15 +1882,22 @@ function descField(h, field){
     '<span class="d-val' + (v ? '' : ' faint') + '" data-dhero="' + escA(h.id) + '" data-dfield="' + escA(field) + '" title="Click to edit">' +
     (v ? esc(v) : '—') + '</span></div>';
 }
+const DESC_CATS = [['characters','Characters'],['locations','Locations'],['hero_props','Props']];
 function renderDescPanel(){
-  const heroes = S.heroes.filter(h => !h.archived);
+  const all = S.heroes.filter(h => !h.archived);
+  const heroes = all.filter(h => h.category === S.descCat);
   let html = '<div class="ref-cat"><h3>Descriptions<span class="n">' + heroes.length + '</span></h3>' +
+    '<div class="tabs" style="margin-bottom:var(--s3)">' +
+    DESC_CATS.map(([cat, label]) =>
+      '<button class="tab' + (S.descCat === cat ? ' active' : '') + '" data-desccat="' + escA(cat) + '">' +
+      esc(label) + ' <span class="n">' + (all.filter(h => h.category === cat).length || '') + '</span></button>').join('') +
+    '</div>' +
     '<div style="margin-bottom:var(--s3);display:flex;gap:var(--s2);align-items:center">' +
     '<button class="btn btn-accent" data-act="heroNew">+ New hero asset</button>' +
     '<span class="count">Canonical text descriptions injected into storyboard prompts. Click any field to edit — saves on blur, Esc cancels.</span>' +
     '</div>';
   if (!heroes.length){
-    html += '<div class="empty-state"><div class="big">No hero assets yet</div>' +
+    html += '<div class="empty-state"><div class="big">No hero assets in this category</div>' +
       'Descriptions live on hero assets — create one, or use the 📋 button on a reference image to draft one with GPT-4o vision.</div></div>';
     $('refsGrid').innerHTML = html;
     $('refCount2').textContent = '';
