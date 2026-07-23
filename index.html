@@ -470,6 +470,10 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <div class="hint" style="margin-top:var(--s1)">Click to add — separate multiple with commas:</div>
   <div id="editTagChips" class="card-row" style="margin-top:var(--s1);gap:3px"></div>
 </div>
+<div class="field"><label for="editSuffix">Edit behaviour</label>
+  <input id="editSuffix" value="Keep everything else the same: composition, lighting, palette, mood.">
+  <div class="hint">Change this to control what stays locked. Delete for maximum freedom.</div>
+</div>
 <div class="field"><label for="editQuality">Quality</label>
   <select id="editQuality"></select>
   <div class="hint" id="editCost"></div>
@@ -1448,6 +1452,7 @@ function showEditPrompt(){
   $('editInstr').value = '';
   $('editHeroes').value = '';
   $('editCount').value = '1';
+  $('editSuffix').value = 'Keep everything else the same: composition, lighting, palette, mood.';
   updateEditCost();
   // openModal adds the .open class (so Escape/backdrop dismissal and
   // anyModalOpen() work) and clears any stuck generation overlay. The old
@@ -1488,7 +1493,7 @@ async function editShot(){
     // now-stale key that no longer matches any row's output_file.
     let curPayload = latestP;
     for (let g = 0; g < editCount; g++) {
-      const body = Object.assign({edit_instructions: instr}, curPayload);
+      const body = Object.assign({edit_instructions: instr, edit_suffix: $('editSuffix').value.trim()}, curPayload);
       if (quality) body.quality = quality;
       if (heroTags) body.hero_tags = heroTags;
       const d = await api('api/edit', body);

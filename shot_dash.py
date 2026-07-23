@@ -2345,8 +2345,7 @@ class Handler(BaseHTTPRequestHandler):
         if hero_tags:
             fragments = hero_fragments({"hero_tags": hero_tags})
             if fragments:
-                edit_prompt = ". ".join(fragments) + ". " + edit_prompt
-        edit_prompt = edit_prompt + EDIT_SUFFIX
+                edit_instructions = ". ".join(fragments) + ". " + edit_instructions
         key = require_openai_key()
         quality = requested_quality(data)
         img_bytes = openai_edit_image(source_data, edit_prompt, key, quality)
