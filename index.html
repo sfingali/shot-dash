@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Shot Dash — THE WAIF</title>
+<title>Shot Dash</title>
 <style>
 /* ============ Design tokens ============ */
 :root{
@@ -47,28 +47,33 @@ button{font:inherit;color:inherit}
 .btn-ghost:hover{color:var(--text);background:var(--surface-2)}
 
 /* ============ Banner + tabs ============ */
-.banner{display:flex;align-items:center;gap:var(--s4);padding:var(--s2) var(--s4);background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.banner{display:flex;align-items:center;gap:var(--s3);padding:var(--s2) var(--s4);background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
 .banner h1{font-size:15px;color:var(--accent);letter-spacing:.02em;white-space:nowrap}
-.banner h1 .film{color:var(--text-faint);font-weight:400;font-size:12px;letter-spacing:.14em;margin-left:var(--s2)}
+.banner h1 .film{color:var(--text-faint);font-weight:400;font-size:12px;letter-spacing:.14em;margin-left:var(--s2);text-transform:uppercase}
 .tabs{display:flex;gap:2px}
-.tab{padding:var(--s1) var(--s4);background:transparent;border:1px solid transparent;border-radius:var(--r1);cursor:pointer;font-size:12px;font-weight:600;color:var(--text-dim)}
+.tab{padding:var(--s1) var(--s3);background:transparent;border:1px solid transparent;border-radius:var(--r1);cursor:pointer;font-size:12px;font-weight:600;color:var(--text-dim);white-space:nowrap}
 .tab:hover{color:var(--text)}
 .tab.active{background:var(--accent-dim);color:var(--accent);border-color:var(--border)}
 .tab .n{font-weight:400;color:var(--text-faint);margin-left:4px}
-.stats{margin-left:auto;font-size:12px;color:var(--text-dim);display:flex;gap:var(--s3);white-space:nowrap}
+.tab .n:empty{display:none}
+.proj{display:flex;gap:4px;align-items:center;margin-left:auto}
+.proj .select{max-width:170px}
+.stats{font-size:12px;color:var(--text-dim);display:flex;gap:var(--s3);white-space:nowrap}
 .stats b{font-weight:600}
 
 /* ============ Toolbar ============ */
 .toolbar{display:flex;align-items:center;gap:var(--s2);padding:var(--s2) var(--s4);background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
 .toolbar .spacer{flex:1}
 .count{font-size:12px;color:var(--text-dim)}
+.backup-ind{font-size:11px;color:var(--text-faint);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.backup-ind .dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 2.4s ease-in-out infinite}
 
 /* ============ Layout ============ */
 .content{flex:1;overflow:hidden;display:none;min-height:0}
 .content.active{display:flex}
 .col{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0}
 
-/* ============ Shot grid ============ */
+/* ============ Shot / shotlist grid ============ */
 .grid-wrap{flex:1;overflow:auto;min-height:0}
 .grid-wrap table{width:100%;border-collapse:collapse}
 .grid-wrap th{position:sticky;top:0;z-index:2;background:var(--surface);color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:var(--s1) var(--s2);border-bottom:1px solid var(--border-strong);cursor:pointer;white-space:nowrap;user-select:none}
@@ -83,8 +88,11 @@ button{font:inherit;color:inherit}
 td.mono,.mono{font-family:var(--mono);font-size:11px}
 .empty-state{padding:48px var(--s5);text-align:center;color:var(--text-dim)}
 .empty-state .big{font-size:15px;margin-bottom:var(--s2);color:var(--text)}
+td[data-col]{cursor:text;min-width:56px}
+td[data-col]:hover{background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--border-strong)}
+.sl-input{width:100%;min-width:120px;background:var(--surface-3);border:1px solid var(--accent);color:var(--text);font:inherit;font-size:12px;padding:1px 4px;border-radius:2px}
 
-/* ============ Status pills ============ */
+/* ============ Status pills + badges ============ */
 .pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;font-weight:600;line-height:1.5;text-transform:lowercase}
 .st-pending{background:var(--surface-3);color:var(--text-dim)}
 .st-curated{background:var(--blue-dim);color:var(--blue)}
@@ -93,6 +101,7 @@ td.mono,.mono{font-family:var(--mono);font-size:11px}
 .st-edited{background:var(--purple-dim);color:var(--purple)}
 .st-selected{background:var(--teal-dim);color:var(--teal)}
 .st-archived{background:var(--surface-3);color:var(--text-faint)}
+.badge{display:inline-block;padding:0 7px;border-radius:8px;font-size:10px;font-weight:600;background:var(--purple-dim);color:var(--purple);margin-right:3px;white-space:nowrap;line-height:1.7}
 
 /* ============ Viewer ============ */
 .viewer{flex-shrink:0;border-top:2px solid var(--border-strong);background:var(--surface);display:flex;gap:var(--s4);padding:var(--s3) var(--s4);overflow:hidden;max-height:46vh}
@@ -116,6 +125,17 @@ td.mono,.mono{font-family:var(--mono);font-size:11px}
 .viewer-actions{display:flex;gap:var(--s2);margin-bottom:var(--s2);flex-wrap:wrap;align-items:center}
 .viewer-actions .btn{padding:4px 12px;font-size:11px}
 
+/* ============ References layout ============ */
+.refs-layout{display:flex;flex:1;min-height:0;min-width:0}
+.tree{width:224px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;padding:var(--s2);background:var(--surface)}
+.tree .node{display:flex;justify-content:space-between;align-items:center;gap:var(--s1);padding:3px 8px;border-radius:var(--r1);cursor:pointer;font-size:12px;color:var(--text-dim);user-select:none}
+.tree .node:hover{color:var(--text);background:var(--surface-2)}
+.tree .node.active{background:var(--accent-dim);color:var(--accent)}
+.tree .node .n{color:var(--text-faint);font-size:10px;font-variant-numeric:tabular-nums}
+.tree .node.root{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-top:var(--s2)}
+.tree .node.child{margin-left:16px}
+.tree .node.all{font-weight:700;margin-top:0}
+
 /* ============ Refs + archive cards ============ */
 .cards{flex:1;overflow:auto;padding:var(--s4);align-content:flex-start}
 .ref-cat{margin-bottom:var(--s4)}
@@ -132,7 +152,23 @@ td.mono,.mono{font-family:var(--mono);font-size:11px}
 .card .thumb .acts button:hover{border-color:var(--accent);color:var(--accent)}
 .card .thumb .acts button.del:hover{border-color:var(--red);color:var(--red)}
 .card .name{font-size:10px;color:var(--text-dim);word-break:break-all;font-family:var(--mono);text-align:center}
+.card .cat{font-size:10px;color:var(--text-faint);text-align:center}
 .card .btn{font-size:11px;padding:3px 8px}
+details.bin{margin-top:var(--s5);border-top:1px dashed var(--border);padding-top:var(--s3)}
+details.bin summary{cursor:pointer;color:var(--text-dim);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:var(--s3);user-select:none}
+details.bin summary:hover{color:var(--text)}
+
+/* ============ Hero cards ============ */
+.hero-card{width:300px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:var(--s3);display:flex;flex-direction:column;gap:var(--s2)}
+.hero-card .h-top{display:flex;align-items:center;gap:var(--s2)}
+.hero-card .h-top img{width:64px;height:36px;object-fit:cover;border-radius:var(--r1);border:1px solid var(--border);background:#000;flex-shrink:0}
+.hero-card .h-name{font-weight:700;font-size:13px}
+.hero-card .h-type{font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.08em}
+.hero-card .h-desc{font-size:11px;color:var(--text-dim);line-height:1.5;max-height:72px;overflow:hidden}
+.hero-card .h-meta{font-size:10px;color:var(--text-faint)}
+.hero-card .h-shots{font-size:10px;color:var(--text-faint);font-family:var(--mono);max-height:44px;overflow-y:auto}
+.hero-card .h-acts{display:flex;gap:var(--s1);flex-wrap:wrap}
+.hero-card .h-acts .btn{font-size:11px;padding:3px 8px}
 
 /* ============ Modals ============ */
 .modal{display:none;position:fixed;inset:0;background:rgba(5,6,7,.85);z-index:100;align-items:center;justify-content:center}
@@ -171,13 +207,15 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 .job .t{color:var(--text-dim);font-weight:400;font-variant-numeric:tabular-nums}
 
 /* ============ Responsive ============ */
-@media(max-width:860px){
+@media(max-width:960px){
   .viewer{flex-direction:column;max-height:60vh;overflow-y:auto}
   .viewer-left{width:100%;min-width:0}
   .viewer-frame img{max-height:28vh}
   .grid-wrap td{max-width:160px}
   .banner{flex-wrap:wrap;gap:var(--s2)}
-  .stats{margin-left:0;width:100%}
+  .proj{margin-left:0}
+  .stats{width:100%}
+  .tree{width:160px}
 }
 @media(prefers-reduced-motion:reduce){
   *{animation:none!important;transition:none!important}
@@ -186,22 +224,27 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 </head>
 <body>
 <div class="banner">
-  <h1>&#127916; Shot Dash<span class="film">THE WAIF</span></h1>
-  <div class="tabs" role="tablist">
-    <button class="tab active" id="tabBtnShots" onclick="switchTab('shots')">Shots</button>
-    <button class="tab" id="tabBtnRefs" onclick="switchTab('refs')">References</button>
-    <button class="tab" id="tabBtnArchive" onclick="switchTab('archive')">Archive <span class="n" id="archCount"></span></button>
+  <h1>&#127916; Shot Dash<span class="film" id="filmName"></span></h1>
+  <div class="tabs" role="tablist" id="tabBar">
+    <button class="tab active" data-tab="shots" id="tabBtnShots">Shots <span class="n" id="shotsCount"></span></button>
+    <button class="tab" data-tab="refs" id="tabBtnRefs">References <span class="n" id="refsCount"></span></button>
+    <button class="tab" data-tab="shotlist" id="tabBtnShotlist">Shotlist <span class="n" id="slCount"></span></button>
+    <button class="tab" data-tab="archive" id="tabBtnArchive">Archive <span class="n" id="archCount"></span></button>
+  </div>
+  <div class="proj">
+    <select id="projectSel" class="select" title="Active project"></select>
+    <button class="btn btn-ghost" data-act="newProject" title="Create a new project">+</button>
   </div>
   <div class="stats" id="stats"></div>
-  <button class="btn btn-ghost" onclick="openHelp()" title="Keyboard shortcuts (?)">?</button>
+  <button class="btn btn-ghost" data-act="help" title="Keyboard shortcuts (?)">?</button>
 </div>
 
 <!-- SHOTS TAB -->
 <div id="tabShots" class="content active">
   <div class="col">
     <div class="toolbar">
-      <input id="search" class="input" placeholder="Filter shots&hellip;  ( / )" oninput="renderGrid()" style="width:220px">
-      <select id="statusFilter" class="select" onchange="renderGrid()">
+      <input id="search" class="input" placeholder="Filter shots&hellip;  ( / )" style="width:190px">
+      <select id="statusFilter" class="select">
         <option value="">All statuses</option>
         <option value="pending">pending</option>
         <option value="curated">curated</option>
@@ -210,10 +253,23 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
         <option value="edited">edited</option>
         <option value="selected">selected</option>
       </select>
-      <button class="btn btn-accent" onclick="showCreateForm()">+ New shot</button>
+      <select id="sceneFilter" class="select"><option value="">All scenes</option></select>
+      <select id="qualitySel" class="select" title="Render quality (saved to project)"></select>
+      <select id="modelSel" class="select" title="Image model (saved to project)"></select>
+      <button class="btn btn-accent" data-act="newShot">+ New shot</button>
+      <button class="btn" data-act="duplicate" title="Duplicate the selected shot">&#10697; Duplicate</button>
+      <button class="btn" data-act="syncShotlist" title="Create shotlist rows for shots that have none">&#8645; Sync to Shotlist</button>
+      <select id="exportSel" class="select" title="Export data">
+        <option value="">Export&hellip;</option>
+        <option value="shots|csv">Shots &mdash; CSV</option>
+        <option value="shotlist|csv">Shotlist &mdash; CSV</option>
+        <option value="shots|json">Shots &mdash; JSON</option>
+        <option value="shotlist|json">Shotlist &mdash; JSON</option>
+        <option value="all|json">Full project &mdash; JSON</option>
+      </select>
       <span class="spacer"></span>
       <span class="count" id="count"></span>
-      <button class="btn btn-ghost" onclick="refreshData()" title="Reload from CSV">&#8635; Refresh</button>
+      <button class="btn btn-ghost" data-act="refresh" title="Reload from disk">&#8635; Refresh</button>
     </div>
     <div class="grid-wrap" id="gridWrap">
       <table><thead id="thead"></thead><tbody id="grid"></tbody></table>
@@ -230,10 +286,11 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
       </div>
       <div class="viewer-info">
         <div class="viewer-actions" id="viewerActions" style="display:none">
-          <button id="genBtn" class="btn btn-accent" onclick="generateShot()">&#9889; Generate</button>
-          <button id="regenBtn" class="btn btn-accent" onclick="generateShot()">&#128260; Regenerate</button>
-          <button id="editBtn" class="btn" onclick="showEditPrompt()">&#9998; Edit image</button>
-          <select id="statusSelect" class="select" onchange="setStatus(this.value)">
+          <button id="genBtn" class="btn btn-accent" data-act="gen">&#9889; Generate</button>
+          <button id="regenBtn" class="btn btn-accent" data-act="gen">&#128260; Regenerate</button>
+          <button id="editBtn" class="btn" data-act="editImg">&#9998; Edit image</button>
+          <button class="btn" data-act="duplicate">&#10697; Duplicate</button>
+          <select id="statusSelect" class="select">
             <option value="">Set status&hellip;</option>
             <option value="pending">pending</option>
             <option value="curated">curated</option>
@@ -242,7 +299,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
             <option value="edited">edited</option>
             <option value="selected">selected</option>
           </select>
-          <button class="btn btn-danger" onclick="archiveShot()">Archive</button>
+          <button class="btn btn-danger" data-act="archiveShot">Archive</button>
         </div>
         <div id="viewerInfo"></div>
       </div>
@@ -252,13 +309,37 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 
 <!-- REFERENCES TAB -->
 <div id="tabRefs" class="content">
+  <div class="refs-layout">
+    <div class="tree" id="refTree"></div>
+    <div class="col">
+      <div class="toolbar">
+        <input id="refSearch" class="input" placeholder="Filter references&hellip;" style="width:200px">
+        <button class="btn btn-accent" data-act="refGen">+ New reference</button>
+        <button class="btn" data-act="newCategory" title="Add a category to the tree">+ Category</button>
+        <button class="btn" data-act="showHeroes" id="heroBtn">&#9733; Hero Assets <span class="n" id="heroCount"></span></button>
+        <span class="spacer"></span>
+        <span class="count" id="refCount2"></span>
+      </div>
+      <div class="cards" id="refsGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SHOTLIST TAB -->
+<div id="tabShotlist" class="content">
   <div class="col">
     <div class="toolbar">
-      <input id="refSearch" class="input" placeholder="Filter references&hellip;" oninput="renderRefs()" style="width:220px">
-      <select id="refCatFilter" class="select" onchange="renderRefs()"><option value="">All categories</option></select>
-      <button class="btn btn-accent" onclick="showRefGenerate()">+ New reference</button>
+      <button class="btn btn-accent" data-act="slAdd">+ Add row</button>
+      <button class="btn" data-act="syncShotlist" title="Create rows for Shots-tab items missing from the shotlist">&#8645; Sync from Shots</button>
+      <span class="backup-ind" id="backupInd"><span class="dot"></span><span id="backupTxt">auto-backup every 10 min</span></span>
+      <span class="spacer"></span>
+      <span class="count" id="slRowCount"></span>
+      <button class="btn btn-ghost" data-act="refresh">&#8635; Refresh</button>
     </div>
-    <div class="cards" id="refsGrid"></div>
+    <div class="grid-wrap" id="slWrap">
+      <table><thead id="slHead"></thead><tbody id="slBody"></tbody></table>
+      <div class="empty-state" id="slEmpty" style="display:none"></div>
+    </div>
   </div>
 </div>
 
@@ -266,9 +347,9 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 <div id="tabArchive" class="content">
   <div class="col">
     <div class="toolbar">
-      <span class="count">Archived shots keep their images and history. Restore returns a shot to the list.</span>
+      <span class="count">Nothing here is deleted &mdash; archived shots keep their images and history, binned references stay on disk. Restore returns items to the board.</span>
     </div>
-    <div class="cards" id="archiveGrid"><div class="card-row" id="archiveRow"></div></div>
+    <div class="cards" id="archiveGrid"></div>
   </div>
 </div>
 
@@ -281,7 +362,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <div class="err" id="newInstrErr">Instructions are required &mdash; the prompt is curated from them.</div>
 </div>
 <div class="field"><label for="newScene">Scene number</label>
-  <input id="newScene" placeholder="e.g. 42" oninput="autoGenFilename()">
+  <input id="newScene" placeholder="e.g. 42">
   <div class="hint" id="newSceneHint">Location, characters and fountain text auto-fill from the scene when known.</div>
 </div>
 <div class="field"><label for="newFile">Output file</label>
@@ -297,8 +378,8 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <select id="newStatus"><option value="pending">pending</option><option value="curated">curated</option></select>
 </div>
 <div class="modal-foot">
-  <button class="btn" onclick="hideCreateForm()">Cancel</button>
-  <button class="btn btn-accent" onclick="createShot()">Create shot</button>
+  <button class="btn" data-act="close" data-modal="createModal">Cancel</button>
+  <button class="btn btn-accent" data-act="createShot">Create shot</button>
 </div>
 </div>
 </div>
@@ -312,8 +393,8 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <div class="err" id="editInstrErr">Describe the edit first.</div>
 </div>
 <div class="modal-foot">
-  <button class="btn" onclick="hideEditPrompt()">Cancel</button>
-  <button class="btn btn-accent" onclick="editShot()">Start edit</button>
+  <button class="btn" data-act="close" data-modal="editModal">Cancel</button>
+  <button class="btn btn-accent" data-act="editShot">Start edit</button>
 </div>
 </div>
 </div>
@@ -322,7 +403,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 <div class="modal-inner">
 <h3>Generate reference</h3>
 <div class="field"><label for="refGenCat">Category</label>
-  <input id="refGenCat" placeholder="characters, locations, props&hellip;" list="refCatList">
+  <input id="refGenCat" placeholder="locations/cabin, characters/waif&hellip;" list="refCatList">
   <datalist id="refCatList"></datalist>
 </div>
 <div class="field"><label for="refGenInstr">Description (required)</label>
@@ -333,8 +414,8 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <input id="refGenCount" value="1" type="number" min="1" max="9">
 </div>
 <div class="modal-foot">
-  <button class="btn" onclick="hideRefGenerate()">Cancel</button>
-  <button class="btn btn-accent" onclick="generateRef()">Generate</button>
+  <button class="btn" data-act="close" data-modal="refGenModal">Cancel</button>
+  <button class="btn btn-accent" data-act="generateRef">Generate</button>
 </div>
 </div>
 </div>
@@ -351,8 +432,76 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <input id="refEditCount" value="1" type="number" min="1" max="9">
 </div>
 <div class="modal-foot">
-  <button class="btn" onclick="hideRefEdit()">Cancel</button>
-  <button class="btn btn-accent" onclick="editRef()">Start edit</button>
+  <button class="btn" data-act="close" data-modal="refEditModal">Cancel</button>
+  <button class="btn btn-accent" data-act="editRef">Start edit</button>
+</div>
+</div>
+</div>
+
+<div class="modal" id="heroModal">
+<div class="modal-inner">
+<h3 id="heroModalTitle">New hero asset</h3>
+<div class="field"><label for="heroName">Name (required)</label>
+  <input id="heroName" placeholder="e.g. Ben's red Forester">
+  <div class="err" id="heroNameErr">A name is required.</div>
+</div>
+<div class="field"><label for="heroType">Type</label>
+  <select id="heroType">
+    <option value="prop">prop</option>
+    <option value="character">character</option>
+    <option value="wardrobe">wardrobe</option>
+    <option value="vehicle">vehicle</option>
+    <option value="location">location</option>
+    <option value="set-dressing">set-dressing</option>
+    <option value="other">other</option>
+  </select>
+</div>
+<div class="field"><label for="heroDesc">Description</label>
+  <textarea id="heroDesc" placeholder="Exact look of the asset&hellip;"></textarea>
+  <div class="hint">Appended to every generation prompt of tagged shots &mdash; this is what keeps the asset consistent across renders.</div>
+</div>
+<div class="field"><label for="heroBreak">Breakdown</label>
+  <textarea id="heroBreak" style="min-height:56px" placeholder="Materials, wear, distinguishing details&hellip;"></textarea>
+</div>
+<div class="field"><label for="heroColors">Colors</label>
+  <input id="heroColors" placeholder="e.g. faded oxblood red, rust on the wheel arches">
+</div>
+<div class="field"><label for="heroNotes">Notes</label>
+  <input id="heroNotes">
+</div>
+<div class="field"><label for="heroRef">Reference image</label>
+  <input id="heroRef" class="mono" list="refImgList" placeholder="category/file.png">
+  <datalist id="refImgList"></datalist>
+</div>
+<div class="modal-foot">
+  <button class="btn" data-act="close" data-modal="heroModal">Cancel</button>
+  <button class="btn btn-accent" data-act="heroSave">Save hero</button>
+</div>
+</div>
+</div>
+
+<div class="modal" id="projectModal">
+<div class="modal-inner">
+<h3>New project</h3>
+<div class="field"><label for="projName">Project name</label>
+  <input id="projName" placeholder="my-next-film">
+  <div class="hint">A directory is created under projects/ with its own shots, shotlist, frames, refs and hero assets.</div>
+  <div class="err" id="projNameErr">A name is required.</div>
+</div>
+<div class="modal-foot">
+  <button class="btn" data-act="close" data-modal="projectModal">Cancel</button>
+  <button class="btn btn-accent" data-act="createProject">Create &amp; switch</button>
+</div>
+</div>
+</div>
+
+<div class="modal" id="confirmModal">
+<div class="modal-inner">
+<h3 id="confirmTitle">Are you sure?</h3>
+<p id="confirmMsg" style="margin-bottom:var(--s2);color:var(--text-dim)"></p>
+<div class="modal-foot">
+  <button class="btn" data-act="confirmNo">Cancel</button>
+  <button class="btn btn-danger" id="confirmYesBtn" data-act="confirmYes">Confirm</button>
 </div>
 </div>
 </div>
@@ -360,10 +509,10 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 <div class="modal" id="fieldModal">
 <div class="modal-inner">
 <h3 id="fieldModalLabel">Edit</h3>
-<div class="field"><textarea id="fieldModalText" style="min-height:130px"></textarea></div>
+<div class="field"><textarea id="fieldModalText" style="min-height:130px"></textarea><div class="hint" id="fieldModalHint"></div></div>
 <div class="modal-foot">
-  <button class="btn" onclick="hideFieldEdit()">Cancel</button>
-  <button class="btn btn-accent" onclick="saveFieldEdit()">Save</button>
+  <button class="btn" data-act="close" data-modal="fieldModal">Cancel</button>
+  <button class="btn btn-accent" data-act="saveField">Save</button>
 </div>
 </div>
 </div>
@@ -376,11 +525,12 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <kbd>a</kbd><span>Approve selected shot</span>
   <kbd>g</kbd><span>Generate / regenerate selected shot</span>
   <kbd>e</kbd><span>Edit selected shot's image</span>
+  <kbd>d</kbd><span>Duplicate selected shot</span>
   <kbd>/</kbd><span>Focus the filter box</span>
   <kbd>?</kbd><span>Show this help</span>
   <kbd>Esc</kbd><span>Close any dialog</span>
 </div>
-<div class="modal-foot"><button class="btn" onclick="closeModal('helpModal')">Close</button></div>
+<div class="modal-foot"><button class="btn" data-act="close" data-modal="helpModal">Close</button></div>
 </div>
 </div>
 
@@ -395,17 +545,30 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 /* ============ State ============ */
 const S = {
   shots: [],            // server (CSV) order — never sorted in place
-  refCats: {},
+  shotlist: [],
+  slCols: [],
+  refCats: {},          // category -> [files]
+  categories: [],       // flat known-category list ('locations/cabin', ...)
+  catRoots: [],
+  archRefs: [],
+  binRefs: [],
+  heroes: [],
+  projects: [],
+  settings: {},         // active project settings (quality, model, prefix)
   selectedKey: null,    // output_file, or 'row:N' for shots without one
   displayedKeys: [],    // current grid order, for keyboard navigation
   sortCol: 'shot_number',
   sortDir: 1,
   busyKeys: new Set(),  // shots with a generate/edit in flight
   fieldEdit: null,      // {key, field}
+  refSelCat: '',        // '' = all
+  refView: 'refs',      // 'refs' | 'heroes'
+  refEditFile: null,
+  heroEditId: null,
 };
 const $ = id => document.getElementById(id);
-const SHOT_COLS = ['shot_number','scene_number','status','characters','location','lens','generation_method','iteration_count','estimated_cost','verbatim_instructions','output_file'];
-const COL_LABELS = {shot_number:'#',scene_number:'Sc',status:'Status',characters:'Characters',location:'Location',lens:'Lens',generation_method:'Method',iteration_count:'v',estimated_cost:'$',verbatim_instructions:'Instructions',output_file:'File'};
+const SHOT_COLS = ['shot_number','scene_number','status','characters','hero_tags','location','lens','generation_method','iteration_count','estimated_cost','verbatim_instructions','output_file'];
+const COL_LABELS = {shot_number:'#',scene_number:'Sc',status:'Status',characters:'Characters',hero_tags:'Heroes',location:'Location',lens:'Lens',generation_method:'Method',iteration_count:'v',estimated_cost:'$',verbatim_instructions:'Instructions',output_file:'File'};
 const NUMERIC_COLS = new Set(['shot_number','scene_number','iteration_count','generation_number']);
 
 function keyFor(shot, serverIdx){ return shot.output_file ? shot.output_file : 'row:' + serverIdx; }
@@ -422,6 +585,19 @@ function payloadFor(key){
 }
 function esc(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function escA(t){ return esc(t).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function splitTags(v){ return String(v || '').split(',').map(t => t.trim()).filter(Boolean); }
+function heroById(id){ return S.heroes.find(h => h.id === id) || null; }
+function heroLabel(tag){
+  const h = S.heroes.find(x => x.id === tag || x.name === tag);
+  return h ? h.name : tag;
+}
+function taggedShotsFor(hero){
+  return S.shots.filter(s => {
+    if (s.status === 'archived') return false;
+    const tags = splitTags(s.hero_tags);
+    return tags.includes(hero.id) || tags.includes(hero.name);
+  });
+}
 
 /* ============ API helper ============ */
 async function api(path, body){
@@ -452,7 +628,7 @@ function toast(msg, opts){
     box.appendChild(a);
   }
   const x = document.createElement('button');
-  x.className = 'x'; x.textContent = '\u00d7'; x.title = 'Dismiss';
+  x.className = 'x'; x.textContent = '×'; x.title = 'Dismiss';
   x.onclick = () => box.remove();
   box.appendChild(x);
   $('toasts').appendChild(box);
@@ -490,20 +666,67 @@ function syncBusyUI(){
   $('viewerProgress').classList.toggle('on', busy);
   ['genBtn','regenBtn','editBtn'].forEach(id => { $(id).disabled = busy; });
 }
+/* Server-side job (mass regen): poll /api/job_status until it finishes. */
+function trackJob(jobId, label){
+  const chip = document.createElement('div');
+  chip.className = 'job';
+  chip.innerHTML = '<span class="dot"></span><span></span><span class="t"></span>';
+  chip.children[1].textContent = label;
+  $('jobs').appendChild(chip);
+  const poll = async () => {
+    let j;
+    try { j = await api('/api/job_status?id=' + encodeURIComponent(jobId)); }
+    catch (e){ chip.remove(); toast(e.message, {error: true}); return; }
+    chip.querySelector('.t').textContent = j.done + '/' + j.total;
+    if (j.status === 'running'){ setTimeout(poll, 2500); return; }
+    chip.remove();
+    const nOk = (j.files || []).length, nErr = (j.errors || []).length;
+    toast(label + ' finished — ' + nOk + ' updated' + (nErr ? ', ' + nErr + ' failed' : ''),
+          nErr ? {error: true} : {});
+    if (nErr && j.errors[0]) toast(j.errors[0], {error: true});
+    refreshData();
+  };
+  poll();
+}
 
 /* ============ Tabs ============ */
+const TABS = ['shots','refs','shotlist','archive'];
 function switchTab(t){
-  $('tabBtnShots').classList.toggle('active', t === 'shots');
-  $('tabBtnRefs').classList.toggle('active', t === 'refs');
-  $('tabBtnArchive').classList.toggle('active', t === 'archive');
-  $('tabShots').classList.toggle('active', t === 'shots');
-  $('tabRefs').classList.toggle('active', t === 'refs');
-  $('tabArchive').classList.toggle('active', t === 'archive');
+  if (!TABS.includes(t)) return;
+  TABS.forEach(x => {
+    const cap = x.charAt(0).toUpperCase() + x.slice(1);
+    $('tabBtn' + cap).classList.toggle('active', x === t);
+    $('tab' + cap).classList.toggle('active', x === t);
+  });
   if (t === 'refs') renderRefs();
+  if (t === 'shotlist') renderShotlist();
   if (t === 'archive') renderArchive();
 }
 
 /* ============ Data ============ */
+async function fetchProjects(){
+  const d = await api('/api/projects');
+  S.projects = d.projects || [];
+  S.settings = d.settings || {};
+  const sel = $('projectSel');
+  sel.innerHTML = '';
+  S.projects.forEach(p => {
+    const o = document.createElement('option'); o.value = p; o.textContent = p; sel.appendChild(o);
+  });
+  sel.value = d.active || '';
+  $('filmName').textContent = (d.active || '').replace(/[-_]/g, ' ');
+  document.title = 'Shot Dash — ' + (d.active || '');
+  const qs = $('qualitySel'); qs.innerHTML = '';
+  (d.qualities || ['low','medium','high']).forEach(q => {
+    const o = document.createElement('option'); o.value = q; o.textContent = 'Quality: ' + q; qs.appendChild(o);
+  });
+  qs.value = S.settings.quality || 'medium';
+  const ms = $('modelSel'); ms.innerHTML = '';
+  (d.models || []).forEach(m => {
+    const o = document.createElement('option'); o.value = m.id; o.textContent = m.label; ms.appendChild(o);
+  });
+  if (S.settings.model) ms.value = S.settings.model;
+}
 async function fetchShots(){
   const [shotsRes, framesRes] = await Promise.all([api('/api/shots'), api('/api/frames')]);
   S.shots = shotsRes.shots || [];
@@ -513,40 +736,115 @@ async function fetchShots(){
     const rel = frames[fn] || framesLower[fn.toLowerCase()];
     s._frame_url = rel ? '/api/frame/' + encodeURIComponent(rel) : null;
   }
+  // scene filter options (keep the current selection when still valid)
+  const sf = $('sceneFilter');
+  const cur = sf.value;
+  const scenes = [...new Set(S.shots.filter(s => s.status !== 'archived')
+    .map(s => (s.scene_number || '').trim()).filter(Boolean))]
+    .sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
+  sf.innerHTML = '<option value="">All scenes</option>' +
+    scenes.map(sc => '<option value="' + escA(sc) + '">Sc ' + esc(sc) + '</option>').join('');
+  sf.value = scenes.includes(cur) ? cur : '';
   renderStats();
   renderGrid();
   renderArchive();
+  updateBadges();
 }
 async function fetchRefs(){
-  const d = await api('/api/refs');
-  S.refCats = d.categories || {};
-  const sel = $('refCatFilter');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">All categories</option>';
+  const [refs, arch, cats, heroes] = await Promise.all([
+    api('/api/refs'), api('/api/archived_refs'), api('/api/categories'), api('/api/heroes')]);
+  S.refCats = refs.categories || {};
+  S.archRefs = arch.archived || [];
+  S.binRefs = arch.binned || [];
+  S.categories = cats.categories || [];
+  S.catRoots = cats.roots || [];
+  S.heroes = heroes.heroes || [];
+  // datalists: categories (ref generate) + ref image paths (hero modal)
   const dl = $('refCatList'); dl.innerHTML = '';
-  Object.keys(S.refCats).sort().forEach(c => {
-    const o = document.createElement('option'); o.value = c; o.textContent = c; sel.appendChild(o);
-    const d2 = document.createElement('option'); d2.value = c; dl.appendChild(d2);
+  [...new Set([...S.categories, ...Object.keys(S.refCats)])].sort().forEach(c => {
+    const o = document.createElement('option'); o.value = c; dl.appendChild(o);
   });
-  sel.value = cur;
+  const il = $('refImgList'); il.innerHTML = '';
+  Object.values(S.refCats).flat().sort().forEach(f => {
+    const o = document.createElement('option'); o.value = f; il.appendChild(o);
+  });
   renderRefs();
+  renderArchive();
+  renderStats();
+  updateBadges();
+}
+async function fetchShotlist(){
+  const d = await api('/api/shotlist');
+  S.shotlist = d.rows || [];
+  S.slCols = d.columns || [];
+  renderShotlist();
+  updateBadges();
 }
 function refreshData(){
-  return Promise.all([fetchShots(), fetchRefs()]).then(() => {
+  return Promise.all([fetchShots(), fetchRefs(), fetchShotlist()]).then(() => {
     if (S.selectedKey && shotByKey(S.selectedKey)) selectShot(S.selectedKey, true);
     else clearViewer();
   }).catch(e => toast(e.message, {error: true}));
 }
+function refreshAll(){
+  return fetchProjects().then(refreshData).catch(e => toast(e.message, {error: true}));
+}
 function renderStats(){
+  const active = S.shots.filter(s => s.status !== 'archived').length;
+  const refTotal = Object.values(S.refCats).reduce((a, l) => a + l.length, 0);
   const c = {};
   for (const s of S.shots) c[s.status] = (c[s.status] || 0) + 1;
   $('stats').innerHTML =
-    '<span><b style="color:var(--green)">' + (c.generated||0) + '</b> generated</span>' +
-    '<span><b style="color:var(--accent)">' + (c.approved||0) + '</b> approved</span>' +
-    '<span><b style="color:var(--purple)">' + (c.edited||0) + '</b> edited</span>' +
-    '<span><b>' + (c.pending||0) + '</b> pending</span>';
-  const n = c.archived || 0;
-  $('archCount').textContent = n ? '(' + n + ')' : '';
+    '<span><b>' + active + '</b> shots</span>' +
+    '<span><b>' + refTotal + '</b> refs</span>' +
+    '<span><b style="color:var(--green)">' + (c.generated || 0) + '</b> generated</span>' +
+    '<span><b style="color:var(--accent)">' + (c.approved || 0) + '</b> approved</span>';
+}
+function updateBadges(){
+  const active = S.shots.filter(s => s.status !== 'archived').length;
+  const archShots = S.shots.length - active;
+  const refTotal = Object.values(S.refCats).reduce((a, l) => a + l.length, 0);
+  const archTotal = archShots + S.archRefs.length + S.binRefs.length;
+  $('shotsCount').textContent = active || '';
+  $('refsCount').textContent = refTotal || '';
+  $('slCount').textContent = S.shotlist.length || '';
+  $('archCount').textContent = archTotal || '';
+  $('heroCount').textContent = S.heroes.filter(h => !h.archived).length || '';
+}
+
+/* ============ Project actions ============ */
+async function switchProject(name){
+  try {
+    await api('/api/project_switch', {name});
+    S.selectedKey = null; S.refSelCat = ''; S.refView = 'refs';
+    clearViewer();
+    await refreshAll();
+    toast('Switched to ' + name);
+  } catch (e){ toast(e.message, {error: true}); fetchProjects(); }
+}
+async function createProject(){
+  const name = $('projName').value.trim();
+  if (!name){
+    $('projNameErr').classList.add('on');
+    $('projName').classList.add('invalid');
+    return;
+  }
+  try {
+    const d = await api('/api/project_create', {name});
+    closeModal('projectModal');
+    $('projName').value = '';
+    S.selectedKey = null; S.refSelCat = ''; S.refView = 'refs';
+    clearViewer();
+    await refreshAll();
+    toast('Project created: ' + d.name);
+  } catch (e){ toast(e.message, {error: true}); }
+}
+async function saveSetting(field, value){
+  try {
+    await api('/api/project_update', {field, value});
+    S.settings[field] = value;
+    toast(field + ' → ' + value);
+  } catch (e){ toast(e.message, {error: true}); fetchProjects(); }
 }
 </script>
 <script>
@@ -555,6 +853,9 @@ function statusPill(st){
   const known = ['pending','curated','generated','approved','edited','selected','archived'];
   const cls = known.includes(st) ? 'st-' + st : 'st-pending';
   return '<span class="pill ' + cls + '">' + esc(st || 'pending') + '</span>';
+}
+function heroBadges(v){
+  return splitTags(v).map(t => '<span class="badge">' + esc(heroLabel(t)) + '</span>').join('');
 }
 function compareShots(a, b){
   const col = S.sortCol;
@@ -569,10 +870,12 @@ function compareShots(a, b){
 function displayedShots(){
   const q = ($('search').value || '').toLowerCase();
   const sf = $('statusFilter').value;
+  const scf = $('sceneFilter').value;
   const list = [];
   S.shots.forEach((s, i) => {
     if (s.status === 'archived') return;
     if (sf && s.status !== sf) return;
+    if (scf && (s.scene_number || '').trim() !== scf) return;
     if (q){
       let hit = false;
       for (const c of SHOT_COLS){ if (String(s[c] || '').toLowerCase().includes(q)){ hit = true; break; } }
@@ -589,16 +892,17 @@ function renderGrid(){
   const active = S.shots.filter(s => s.status !== 'archived').length;
 
   $('thead').innerHTML = '<tr>' + SHOT_COLS.map(c =>
-    '<th onclick="sortBy(\'' + c + '\')">' + (COL_LABELS[c] || c) +
-    (S.sortCol === c ? (S.sortDir > 0 ? ' \u25b4' : ' \u25be') : '') + '</th>').join('') + '</tr>';
+    '<th data-sort="' + c + '">' + (COL_LABELS[c] || c) +
+    (S.sortCol === c ? (S.sortDir > 0 ? ' ▴' : ' ▾') : '') + '</th>').join('') + '</tr>';
 
   if (!list.length){
     $('grid').innerHTML = '';
     const e = $('gridEmpty');
     e.style.display = 'block';
     e.innerHTML = active === 0
-      ? '<div class="big">No shots yet</div>Create the first one to start the board.<br><br><button class="btn btn-accent" onclick="showCreateForm()">+ New shot</button>'
-      : '<div class="big">No shots match</div>Nothing matches the current filter.<br><br><button class="btn" onclick="clearFilters()">Clear filters</button>';
+      ? '<div class="big">No shots yet</div>Create the first one to start the board.<br><br><button class="btn btn-accent" data-act="newShot">+ New shot</button>'
+      : '<div class="big">No shots match</div>Nothing matches the current filter.<br><br><button class="btn" data-act="clearFilters">Clear filters</button>';
+    $('count').textContent = '';
     return;
   }
   $('gridEmpty').style.display = 'none';
@@ -607,8 +911,9 @@ function renderGrid(){
     const cells = SHOT_COLS.map(c => {
       let v = s[c] || '';
       if (c === 'status') return '<td>' + statusPill(v) + '</td>';
+      if (c === 'hero_tags') return '<td>' + heroBadges(v) + '</td>';
       if (c === 'verbatim_instructions') v = String(v).substring(0, 80);
-      if (c === 'output_file') return '<td class="mono">' + esc(v) + (s._frame_url ? ' \ud83d\udcf7' : '') + '</td>';
+      if (c === 'output_file') return '<td class="mono">' + esc(v) + (s._frame_url ? ' 📷' : '') + '</td>';
       return '<td>' + esc(v) + '</td>';
     }).join('');
     return '<tr draggable="true" data-key="' + escA(key) + '"' +
@@ -620,9 +925,13 @@ function sortBy(c){
   if (S.sortCol === c) S.sortDir = -S.sortDir; else { S.sortCol = c; S.sortDir = 1; }
   renderGrid();
 }
-function clearFilters(){ $('search').value = ''; $('statusFilter').value = ''; renderGrid(); }
+function clearFilters(){ $('search').value = ''; $('statusFilter').value = ''; $('sceneFilter').value = ''; renderGrid(); }
 
-/* Row clicks + drag reorder (event delegation, no inline escaping) */
+/* Row clicks + header sort + drag reorder (event delegation) */
+$('thead').addEventListener('click', e => {
+  const th = e.target.closest('th[data-sort]');
+  if (th) sortBy(th.getAttribute('data-sort'));
+});
 $('grid').addEventListener('click', e => {
   const tr = e.target.closest('tr[data-key]');
   if (tr) selectShot(tr.getAttribute('data-key'));
@@ -636,7 +945,7 @@ $('grid').addEventListener('dragstart', e => {
   e.dataTransfer.setData('text/plain', '');
   e.dataTransfer.effectAllowed = 'move';
 });
-$('grid').addEventListener('dragend', e => {
+$('grid').addEventListener('dragend', () => {
   document.querySelectorAll('#grid tr').forEach(tr => tr.classList.remove('dragging','drop-target'));
 });
 $('grid').addEventListener('dragover', e => {
@@ -657,8 +966,11 @@ $('grid').addEventListener('drop', async e => {
   order.splice(to, 0, order.splice(from, 1)[0]);
   const files = order.map(k => { const f = shotByKey(k); return f ? (f.shot.output_file || '') : ''; }).filter(Boolean);
   dragKey = null;
+  // Filtered view → reorder only within the visible subset (rows keep the
+  // numbers the subset already owned); unfiltered → global renumbering.
+  const filtered = !!(($('search').value || '').trim() || $('statusFilter').value || $('sceneFilter').value);
   try {
-    await api('/api/reorder', {order: files});
+    await api(filtered ? '/api/reorder' : '/api/reorder_all', {order: files});
     S.sortCol = 'shot_number'; S.sortDir = 1;
     await refreshData();
     toast('Order saved');
@@ -680,7 +992,7 @@ function clearViewer(){
 function infoRow(label, html){ return '<div class="row"><span class="label">' + label + '</span>' + html + '</div>'; }
 function editableSpan(key, field, value, placeholder){
   return '<span class="editable" data-field="' + escA(field) + '" data-key="' + escA(key) + '" title="Click to edit">' +
-    (value ? esc(String(value).substring(0, 240)) : (placeholder || '\u2014')) + '</span>';
+    (value ? esc(String(value).substring(0, 240)) : (placeholder || '—')) + '</span>';
 }
 function selectShot(key, keepScroll){
   const found = shotByKey(key);
@@ -696,24 +1008,25 @@ function selectShot(key, keepScroll){
     img.style.display = 'none'; img.src = '';
     $('viewerEmpty').style.display = 'block';
     $('viewerEmpty').innerHTML = (s.status === 'pending' || s.status === 'curated')
-      ? 'No image yet \u2014 press <b>Generate</b> (or <kbd>g</kbd>) to render this shot.'
+      ? 'No image yet — press <b>Generate</b> (or <kbd>g</kbd>) to render this shot.'
       : 'Image file not found on disk: <span class="mono">' + esc(s.output_file || '?') + '</span>';
   }
   renderVersionStrip(s);
-  const meta = [esc(s.lens || '\u2014'), esc(s.aspect_ratio || '\u2014'), esc(s.generation_method || '\u2014'),
-                'v' + esc(s.iteration_count || '1'), esc(s.estimated_cost || '\u2014')].join(' \u00b7 ');
+  const meta = [esc(s.lens || '—'), esc(s.aspect_ratio || '—'), esc(s.generation_method || '—'),
+                'v' + esc(s.iteration_count || '1'), esc(s.estimated_cost || '—')].join(' · ');
   $('viewerInfo').innerHTML = [
-    infoRow('Scene / Shot', esc(s.scene_number || '\u2014') + ' / ' + esc(s.shot_number || '\u2014') + ' &nbsp; ' + statusPill(s.status)),
-    infoRow('Characters', esc(s.characters || '\u2014')),
-    infoRow('Location', esc(s.location || '\u2014')),
+    infoRow('Scene / Shot', esc(s.scene_number || '—') + ' / ' + esc(s.shot_number || '—') + ' &nbsp; ' + statusPill(s.status)),
+    infoRow('Characters', esc(s.characters || '—')),
+    infoRow('Heroes', heroBadges(s.hero_tags) + ' ' + editableSpan(key, 'hero_tags', s.hero_tags, 'none — click to tag')),
+    infoRow('Location', esc(s.location || '—')),
     infoRow('Camera', meta),
     s.fountain_text ? infoRow('Fountain', '<span style="white-space:pre-wrap;font-style:italic;color:var(--text-dim)">' + esc(String(s.fountain_text).substring(0, 400)) + '</span>') : '',
     infoRow('Curated', editableSpan(key, 'curated_description', s.curated_description)),
     infoRow('Instructions', editableSpan(key, 'verbatim_instructions', s.verbatim_instructions)),
     s.prompt ? infoRow('API prompt', '<span style="white-space:pre-wrap;color:var(--text-dim)">' + esc(String(s.prompt).substring(0, 400)) + '</span>') : '',
+    s.shotlist_ref ? infoRow('Shotlist', 'row ' + esc(s.shotlist_ref)) : '',
     s.output_file ? infoRow('File', '<span class="mono">' + esc(s.output_file) + '</span>') : ''
   ].join('');
-  const st = s.status || '';
   const hasImage = !!s._frame_url;
   $('genBtn').style.display = (!hasImage) ? 'inline-block' : 'none';
   $('regenBtn').style.display = hasImage ? 'inline-block' : 'none';
@@ -743,7 +1056,7 @@ function renderVersionStrip(s){
   let hist = [];
   try { hist = JSON.parse(s.version_history || '[]'); } catch (e) {}
   $('versionStrip').innerHTML = hist.map(fn =>
-    '<img src="/api/frame/' + encodeURIComponent(fn) + '" title="' + escA(fn) + ' \u2014 click to make current" data-swap="' + escA(fn) + '" onerror="this.remove()">'
+    '<img src="/api/frame/' + encodeURIComponent(fn) + '" title="' + escA(fn) + ' — click to make current" data-swap="' + escA(fn) + '" onerror="this.remove()">'
   ).join('');
 }
 $('versionStrip').addEventListener('click', async e => {
@@ -767,7 +1080,7 @@ async function setStatus(st){
   if (!p) return;
   try {
     await api('/api/update', Object.assign({field: 'status', value: st}, p));
-    toast('Status \u2192 ' + st);
+    toast('Status → ' + st);
     refreshData();
   } catch (e){ toast(e.message, {error: true}); }
 }
@@ -796,7 +1109,6 @@ function showEditPrompt(){
   openModal('editModal');
   $('editInstr').focus();
 }
-function hideEditPrompt(){ closeModal('editModal'); }
 async function editShot(){
   const instr = $('editInstr').value.trim();
   if (!instr){
@@ -808,13 +1120,13 @@ async function editShot(){
   const found = key && shotByKey(key);
   const p = key && payloadFor(key);
   if (!found || !p) return;
-  hideEditPrompt();
+  closeModal('editModal');
   $('editInstr').value = '';
   const end = startJob('Editing sc ' + (found.shot.scene_number || '?'), key);
   try {
     const d = await api('/api/edit', Object.assign({edit_instructions: instr}, p));
     S.selectedKey = d.output_file;
-    toast('Edited \u2192 ' + d.output_file + ' (v' + d.version + ')');
+    toast('Edited → ' + d.output_file + ' (v' + d.version + ')');
     await refreshData();
   } catch (e){
     toast(e.message, {error: true});
@@ -842,6 +1154,17 @@ async function archiveShot(){
     });
   } catch (e){ toast(e.message, {error: true}); }
 }
+async function duplicateShot(){
+  if (!S.selectedKey){ toast('Select a shot to duplicate first', {error: true}); return; }
+  const p = payloadFor(S.selectedKey);
+  if (!p) return;
+  try {
+    const d = await api('/api/duplicate', p);
+    toast('Duplicated → ' + (d.row.output_file || 'new row'));
+    await refreshData();
+    if (d.row.output_file) selectShot(d.row.output_file);
+  } catch (e){ toast(e.message, {error: true}); }
+}
 
 /* ============ Create shot ============ */
 function showCreateForm(){
@@ -851,14 +1174,13 @@ function showCreateForm(){
   openModal('createModal');
   $('newInstr').focus();
 }
-function hideCreateForm(){ closeModal('createModal'); }
+function filePrefix(){ return S.settings.file_prefix || 'shot'; }
 function autoGenFilename(){
   const sc = $('newScene').value.trim();
-  $('newFile').value = sc ? 'waif_sc_' + sc + '_v1.png' : 'waif_sc_NN_v1.png';
-  const known = sc && (parseInt(sc, 10) >= 1 && parseInt(sc, 10) <= 278);
-  $('newSceneHint').textContent = known
-    ? 'Location, characters and fountain text auto-fill from scene ' + sc + '.'
-    : 'Unknown scene \u2014 location will be inferred from the instructions.';
+  $('newFile').value = sc ? filePrefix() + '_sc_' + sc + '_v1.png' : filePrefix() + '_sc_NN_v1.png';
+  $('newSceneHint').textContent = sc
+    ? 'Location, characters and fountain text auto-fill from scene ' + sc + ' when known.'
+    : 'Unknown scene — location will be inferred from the instructions.';
 }
 async function createShot(){
   const instr = $('newInstr').value.trim();
@@ -870,11 +1192,11 @@ async function createShot(){
   }
   const sc = $('newScene').value.trim();
   let fname = $('newFile').value.trim();
-  if (!fname || fname.indexOf('_NN_') >= 0) fname = 'waif_custom_' + Date.now() + '_v1.png';
+  if (!fname || fname.indexOf('_NN_') >= 0) fname = filePrefix() + '_custom_' + Date.now() + '_v1.png';
   const lens = $('newLens').value.trim() || '28mm';
   const gens = Math.min(9, Math.max(1, parseInt($('newGens').value, 10) || 1));
   const status = $('newStatus').value;
-  hideCreateForm();
+  closeModal('createModal');
   try {
     let firstFile = null;
     for (let g = 0; g < gens; g++){
@@ -896,72 +1218,168 @@ function openFieldEdit(key, field){
   S.fieldEdit = {key, field};
   $('fieldModalLabel').textContent = 'Edit ' + field.replace(/_/g, ' ');
   $('fieldModalText').value = found.shot[field] || '';
+  $('fieldModalHint').textContent = field === 'hero_tags'
+    ? 'Comma-separated hero ids or names: ' + S.heroes.filter(h => !h.archived).map(h => h.id + ' (' + h.name + ')').join(', ')
+    : '';
   openModal('fieldModal');
   $('fieldModalText').focus();
 }
-function hideFieldEdit(){ S.fieldEdit = null; closeModal('fieldModal'); }
 async function saveFieldEdit(){
   if (!S.fieldEdit) return;
   const {key, field} = S.fieldEdit;
   const p = payloadFor(key);
-  if (!p) return hideFieldEdit();
+  if (!p){ S.fieldEdit = null; closeModal('fieldModal'); return; }
   try {
     await api('/api/edit_text', Object.assign({field, value: $('fieldModalText').value}, p));
-    hideFieldEdit();
+    S.fieldEdit = null;
+    closeModal('fieldModal');
     toast('Saved');
     refreshData();
   } catch (e){ toast(e.message, {error: true}); }
 }
 
-/* ============ References ============ */
+/* ============ Sync to shotlist ============ */
+async function syncShotlist(){
+  try {
+    const d = await api('/api/shotlist_sync', {});
+    toast('Shotlist sync — ' + d.created + ' row' + (d.created === 1 ? '' : 's') + ' created');
+    await Promise.all([fetchShotlist(), fetchShots()]);
+  } catch (e){ toast(e.message, {error: true}); }
+}
+</script>
+<script>
+/* ============ References: category tree ============ */
+function refCatCounts(){
+  const counts = {};
+  for (const [cat, imgs] of Object.entries(S.refCats)) counts[cat] = imgs.length;
+  return counts;
+}
+function renderRefTree(){
+  const counts = refCatCounts();
+  const all = [...new Set([...S.categories, ...Object.keys(S.refCats)])].sort();
+  const roots = [...new Set([...S.catRoots, ...all.filter(c => !c.includes('/'))])];
+  // stable order: canonical roots first, then any extras alphabetically
+  const extras = roots.filter(r => !S.catRoots.includes(r)).sort();
+  const ordered = [...S.catRoots.filter(r => roots.includes(r) || all.some(c => c.startsWith(r + '/'))), ...extras];
+  const total = Object.values(counts).reduce((a, n) => a + n, 0);
+  const active = (cat) => (S.refView === 'refs' && S.refSelCat === cat) ? ' active' : '';
+  const rollup = (root) => (counts[root] || 0) + all.filter(c => c.startsWith(root + '/'))
+      .reduce((a, c) => a + (counts[c] || 0), 0);
+  let html = '<div class="node all' + active('') + '" data-cat="">All references <span class="n">' + total + '</span></div>';
+  for (const root of ordered){
+    html += '<div class="node root' + active(root) + '" data-cat="' + escA(root) + '">' +
+      esc(root.replace(/_/g, ' ')) + ' <span class="n">' + rollup(root) + '</span></div>';
+    for (const c of all.filter(c => c.startsWith(root + '/')).sort()){
+      const leaf = c.slice(root.length + 1);
+      html += '<div class="node child' + active(c) + '" data-cat="' + escA(c) + '">' +
+        esc(leaf.replace(/_/g, ' ')) + ' <span class="n">' + (counts[c] || 0) + '</span></div>';
+    }
+  }
+  $('refTree').innerHTML = html;
+}
+$('refTree').addEventListener('click', e => {
+  const n = e.target.closest('.node');
+  if (!n) return;
+  S.refSelCat = n.getAttribute('data-cat') || '';
+  S.refView = 'refs';
+  renderRefs();
+});
+
+/* ============ References: grid ============ */
+function refCard(fn, opts){
+  opts = opts || {};
+  const label = fn.split('/').pop();
+  const cat = fn.split('/').slice(0, -1).join('/');
+  let acts = '';
+  if (opts.mode === 'bin' || opts.mode === 'archived'){
+    acts = '<button data-refrestore="' + escA(fn) + '" title="Restore">↩</button>';
+  } else {
+    acts = '<button data-edit="' + escA(fn) + '" title="Image-to-image edit">✎</button>' +
+      '<button data-move="' + escA(fn) + '" title="Move to another category">→</button>' +
+      '<button data-arch="' + escA(fn) + '" title="Archive">⬇</button>' +
+      '<button class="del" data-del="' + escA(fn) + '" title="Move to bin">×</button>';
+  }
+  return '<div class="card"><div class="thumb">' +
+    '<img src="/api/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '" loading="lazy">' +
+    '<div class="acts">' + acts + '</div></div>' +
+    '<div class="name">' + esc(label) + '</div>' +
+    (opts.showCat !== false ? '<div class="cat">' + esc(cat || 'uncategorized') + '</div>' : '') +
+    '</div>';
+}
 function renderRefs(){
+  renderRefTree();
+  $('heroBtn').classList.toggle('btn-accent', S.refView === 'heroes');
+  if (S.refView === 'heroes'){ renderHeroPanel(); return; }
   const q = ($('refSearch').value || '').toLowerCase();
-  const cf = $('refCatFilter').value;
+  const sel = S.refSelCat;
   const cats = Object.keys(S.refCats).sort();
   let html = '', total = 0;
   for (const cat of cats){
-    if (cf && cat !== cf) continue;
+    if (sel && cat !== sel && !cat.startsWith(sel + '/')) continue;
     const imgs = (S.refCats[cat] || []).filter(f => !q || f.toLowerCase().includes(q));
     if (!imgs.length) continue;
     total += imgs.length;
     html += '<div class="ref-cat"><h3>' + esc(cat) + '<span class="n">' + imgs.length + '</span></h3><div class="card-row">' +
-      imgs.map(fn => {
-        const label = fn.split('/').pop();
-        return '<div class="card"><div class="thumb">' +
-          '<img src="/api/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '" loading="lazy">' +
-          '<div class="acts">' +
-          '<button data-edit="' + escA(fn) + '" title="Image-to-image edit">✎</button>' +
-          '<button data-move="' + escA(fn) + '" title="Move to another category">\u2192</button>' +
-          '<button class="del" data-del="' + escA(fn) + '" title="Delete">\u00d7</button>' +
-          '</div></div><div class="name">' + esc(label) + '</div></div>';
-      }).join('') + '</div></div>';
+      imgs.map(fn => refCard(fn, {showCat: false})).join('') + '</div></div>';
   }
-  $('refsGrid').innerHTML = html ||
-    '<div class="empty-state"><div class="big">' + (q || cf ? 'No references match' : 'No references yet') + '</div>' +
-    (q || cf ? 'Try a different filter.' : 'Generate the first reference image for the look book.') +
-    '<br><br><button class="btn btn-accent" onclick="showRefGenerate()">+ New reference</button></div>';
+  if (!html){
+    html = '<div class="empty-state"><div class="big">' + (q || sel ? 'No references match' : 'No references yet') + '</div>' +
+      (q || sel ? 'Try a different filter or category.' : 'Generate the first reference image for the look book.') +
+      '<br><br><button class="btn btn-accent" data-act="refGen">+ New reference</button></div>';
+  }
+  // Binned refs: collapsible section (restore-only)
+  const bins = S.binRefs.filter(f => !q || f.toLowerCase().includes(q));
+  if (bins.length){
+    html += '<details class="bin"><summary>Bin — ' + bins.length + ' reference' + (bins.length === 1 ? '' : 's') +
+      ' (kept on disk, never deleted)</summary><div class="card-row">' +
+      bins.map(fn => refCard(fn, {mode: 'bin'})).join('') + '</div></details>';
+  }
+  $('refsGrid').innerHTML = html;
+  $('refCount2').textContent = total ? total + ' reference' + (total === 1 ? '' : 's') : '';
 }
 $('refsGrid').addEventListener('click', async e => {
   const del = e.target.closest('[data-del]');
+  const arch = e.target.closest('[data-arch]');
+  const restore = e.target.closest('[data-refrestore]');
   const move = e.target.closest('[data-move]');
   const edit = e.target.closest('[data-edit]');
-const view = e.target.closest('[data-view]');
+  const view = e.target.closest('[data-view]');
+  const hedit = e.target.closest('[data-hedit]');
+  const hdel = e.target.closest('[data-hdel]');
+  const hregen = e.target.closest('[data-hregen]');
+  const hrestore = e.target.closest('[data-hrestore]');
   try {
     if (del){
       const fn = del.getAttribute('data-del');
-      if (!confirm('Delete reference ' + fn + '? This removes the file from disk.')) return;
-      await api('/api/ref_delete', {file: fn});
-      toast('Reference deleted');
+      if (!await confirmDlg('Move ' + fn.split('/').pop() + ' to the bin? The file stays on disk and can be restored anytime.', 'Bin it')) return;
+      await api('/api/ref_bin', {file: fn});
+      toast('Moved to bin');
+      fetchRefs();
+    } else if (arch){
+      await api('/api/ref_archive', {file: arch.getAttribute('data-arch')});
+      toast('Reference archived');
+      fetchRefs();
+    } else if (restore){
+      await api('/api/ref_restore', {file: restore.getAttribute('data-refrestore')});
+      toast('Reference restored');
       fetchRefs();
     } else if (move){
       const fn = move.getAttribute('data-move');
-      const cat = prompt('Move ' + fn.split('/').pop() + ' to category:', fn.includes('/') ? fn.split('/')[0] : '');
+      const cat = prompt('Move ' + fn.split('/').pop() + ' to category:', fn.includes('/') ? fn.split('/').slice(0, -1).join('/') : '');
       if (!cat) return;
       await api('/api/ref_move', {file: fn, category: cat.trim()});
       toast('Moved to ' + cat.trim());
       fetchRefs();
     } else if (edit){
       showRefEdit(edit.getAttribute('data-edit'));
+    } else if (hedit){
+      openHeroModal(hedit.getAttribute('data-hedit'));
+    } else if (hdel){
+      deleteHero(hdel.getAttribute('data-hdel'));
+    } else if (hrestore){
+      restoreHero(hrestore.getAttribute('data-hrestore'));
+    } else if (hregen){
+      massRegen(hregen.getAttribute('data-hregen'));
     } else if (view){
       $('fullImg').src = '/api/ref/' + encodeURIComponent(view.getAttribute('data-view'));
       $('imageModal').classList.add('open');
@@ -971,10 +1389,10 @@ const view = e.target.closest('[data-view]');
 function showRefGenerate(){
   $('refGenErr').classList.remove('on');
   $('refGenInstr').classList.remove('invalid');
+  if (S.refSelCat && !$('refGenCat').value) $('refGenCat').value = S.refSelCat;
   openModal('refGenModal');
   $('refGenInstr').focus();
 }
-function hideRefGenerate(){ closeModal('refGenModal'); }
 function showRefEdit(fn){
   S.refEditFile = fn;
   $('refEditErr').classList.remove('on');
@@ -982,7 +1400,6 @@ function showRefEdit(fn){
   openModal('refEditModal');
   $('refEditInstr').focus();
 }
-function hideRefEdit(){ S.refEditFile = null; closeModal('refEditModal'); }
 async function editRef(){
   const instr = $('refEditInstr').value.trim();
   if (!instr){
@@ -993,8 +1410,9 @@ async function editRef(){
   const fn = S.refEditFile;
   if (!fn) return;
   const count = Math.min(9, Math.max(1, parseInt($('refEditCount').value, 10) || 1));
-  hideRefEdit();
-  const end = startJob('Editing ref: ' + fn.split('/').pop() + (count > 1 ? ' \u00d7' + count : ''));
+  S.refEditFile = null;
+  closeModal('refEditModal');
+  const end = startJob('Editing ref: ' + fn.split('/').pop() + (count > 1 ? ' ×' + count : ''));
   try {
     const d = await api('/api/ref_edit', {file: fn, edit_instructions: instr, count});
     toast('Saved ' + d.files.length + ' edit' + (d.files.length > 1 ? 's' : ''));
@@ -1004,7 +1422,6 @@ async function editRef(){
     toast(e.message, {error: true});
   } finally { end(); }
 }
-
 async function generateRef(){
   const instr = $('refGenInstr').value.trim();
   if (!instr){
@@ -1013,70 +1430,403 @@ async function generateRef(){
     return;
   }
   const cat = $('refGenCat').value.trim() || 'misc';
-  hideRefGenerate();
-  const end = startJob('Reference: ' + cat);
+  const count = Math.min(9, Math.max(1, parseInt($('refGenCount').value, 10) || 1));
+  closeModal('refGenModal');
+  const end = startJob('Reference: ' + cat + (count > 1 ? ' ×' + count : ''));
   try {
-    const count = Math.min(9, Math.max(1, parseInt($('refGenCount').value, 10) || 1));
-  const d = await api('/api/generate_ref', {verbatim_instructions: instr, category: cat, count});
-    toast('Reference saved: ' + d.file);
+    const d = await api('/api/generate_ref', {verbatim_instructions: instr, category: cat, count});
+    toast('Saved ' + d.files.length + ' reference' + (d.files.length > 1 ? 's' : '') + ' in ' + d.category);
     $('refGenInstr').value = '';
     fetchRefs();
   } catch (e){
     toast(e.message, {error: true});
   } finally { end(); }
 }
+async function addCategory(){
+  const cat = prompt('New category path (use / for sub-categories, e.g. locations/motel):', S.refSelCat ? S.refSelCat + '/' : '');
+  if (!cat || !cat.trim()) return;
+  try {
+    const d = await api('/api/category_add', {category: cat.trim()});
+    toast('Category added: ' + d.category);
+    await fetchRefs();
+    S.refSelCat = d.category;
+    renderRefs();
+  } catch (e){ toast(e.message, {error: true}); }
+}
+
+/* ============ Hero assets panel ============ */
+function archivedHeroesHtml(){
+  const archived = S.heroes.filter(h => h.archived);
+  if (!archived.length) return '';
+  return '<div class="ref-cat" style="margin-top:var(--s4)"><h3>Archived heroes<span class="n">' + archived.length + '</span></h3><div class="card-row">' +
+    archived.map(h =>
+      '<div class="hero-card" style="opacity:.65">' +
+      '<div class="h-top"><div><div class="h-name">' + esc(h.name) + '</div>' +
+      '<div class="h-type">' + esc(h.type || 'asset') + ' · ' + esc(h.id) + '</div></div></div>' +
+      (h.description ? '<div class="h-desc">' + esc(h.description) + '</div>' : '') +
+      '<div class="h-acts"><button class="btn" data-hrestore="' + escA(h.id) + '" title="Un-archive — it influences prompts again">↩ Restore</button></div>' +
+      '</div>').join('') + '</div></div>';
+}
+function renderHeroPanel(){
+  const heroes = S.heroes.filter(h => !h.archived);
+  let html = '<div class="ref-cat"><h3>Hero assets<span class="n">' + heroes.length + '</span></h3>' +
+    '<div style="margin-bottom:var(--s3);display:flex;gap:var(--s2);align-items:center">' +
+    '<button class="btn btn-accent" data-act="heroNew">+ New hero asset</button>' +
+    '<span class="count">Hero descriptions are appended to the prompts of tagged shots. Mass Regenerate pushes an updated description into every tagged frame.</span>' +
+    '</div><div class="card-row">';
+  if (!heroes.length){
+    html += '</div><div class="empty-state" style="width:100%"><div class="big">No hero assets yet</div>' +
+      'Define a prop, wardrobe piece or vehicle once and keep it consistent across every shot.</div></div>';
+    $('refsGrid').innerHTML = html + archivedHeroesHtml();
+    $('refCount2').textContent = '';
+    return;
+  }
+  html += heroes.map(h => {
+    const tagged = taggedShotsFor(h);
+    const thumb = h.ref_image
+      ? '<img src="/api/ref/' + encodeURIComponent(h.ref_image) + '" data-view="' + escA(h.ref_image) + '" onerror="this.style.display=\'none\'" alt="">'
+      : '';
+    const shotsList = tagged.length
+      ? tagged.map(s => esc(s.output_file || ('sc ' + s.scene_number))).join('<br>')
+      : '<span style="color:var(--text-faint)">no shots tagged</span>';
+    return '<div class="hero-card">' +
+      '<div class="h-top">' + thumb + '<div><div class="h-name">' + esc(h.name) + '</div>' +
+      '<div class="h-type">' + esc(h.type || 'asset') + ' · ' + esc(h.id) + '</div></div></div>' +
+      (h.description ? '<div class="h-desc">' + esc(h.description) + '</div>' : '') +
+      (h.breakdown ? '<div class="h-meta"><b>Breakdown:</b> ' + esc(String(h.breakdown).substring(0, 120)) + '</div>' : '') +
+      (h.colors ? '<div class="h-meta"><b>Colors:</b> ' + esc(h.colors) + '</div>' : '') +
+      (h.notes ? '<div class="h-meta"><b>Notes:</b> ' + esc(h.notes) + '</div>' : '') +
+      '<div class="h-meta"><b>Tagged in ' + tagged.length + ' shot' + (tagged.length === 1 ? '' : 's') + ':</b></div>' +
+      '<div class="h-shots">' + shotsList + '</div>' +
+      '<div class="h-acts">' +
+      '<button class="btn" data-hedit="' + escA(h.id) + '">✎ Edit</button>' +
+      '<button class="btn btn-accent" data-hregen="' + escA(h.id) + '" title="Image-to-image edit every tagged frame to match this hero">⚡ Mass Regenerate</button>' +
+      '<button class="btn btn-danger" data-hdel="' + escA(h.id) + '">Archive</button>' +
+      '</div></div>';
+  }).join('');
+  html += '</div></div>';
+  $('refsGrid').innerHTML = html + archivedHeroesHtml();
+  $('refCount2').textContent = heroes.length + ' hero asset' + (heroes.length === 1 ? '' : 's');
+}
+async function restoreHero(id){
+  try {
+    await api('/api/hero_update', {id, field: 'archived', value: false});
+    toast('Hero restored');
+    await fetchRefs();
+    S.refView = 'heroes';
+    renderRefs();
+  } catch (e){ toast(e.message, {error: true}); }
+}
+function openHeroModal(id){
+  S.heroEditId = id || null;
+  const h = id ? heroById(id) : null;
+  $('heroModalTitle').textContent = h ? 'Edit hero: ' + h.name : 'New hero asset';
+  $('heroNameErr').classList.remove('on');
+  $('heroName').classList.remove('invalid');
+  $('heroName').value = h ? (h.name || '') : '';
+  $('heroType').value = h && h.type ? h.type : 'prop';
+  $('heroDesc').value = h ? (h.description || '') : '';
+  $('heroBreak').value = h ? (h.breakdown || '') : '';
+  $('heroColors').value = h ? (h.colors || '') : '';
+  $('heroNotes').value = h ? (h.notes || '') : '';
+  $('heroRef').value = h ? (h.ref_image || '') : '';
+  openModal('heroModal');
+  $('heroName').focus();
+}
+async function saveHero(){
+  const name = $('heroName').value.trim();
+  if (!name){
+    $('heroNameErr').classList.add('on');
+    $('heroName').classList.add('invalid');
+    return;
+  }
+  const fields = {
+    name,
+    type: $('heroType').value,
+    description: $('heroDesc').value.trim(),
+    breakdown: $('heroBreak').value.trim(),
+    colors: $('heroColors').value.trim(),
+    notes: $('heroNotes').value.trim(),
+    ref_image: $('heroRef').value.trim(),
+  };
+  try {
+    if (S.heroEditId){
+      const h = heroById(S.heroEditId);
+      for (const [f, v] of Object.entries(fields)){
+        if (!h || (h[f] || '') !== v){
+          await api('/api/hero_update', {id: S.heroEditId, field: f, value: v});
+        }
+      }
+      toast('Hero updated: ' + name);
+    } else {
+      const d = await api('/api/hero_create', fields);
+      toast('Hero created: ' + d.hero.name + ' (' + d.hero.id + ')');
+    }
+    S.heroEditId = null;
+    closeModal('heroModal');
+    await fetchRefs();
+    S.refView = 'heroes';
+    renderRefs();
+  } catch (e){ toast(e.message, {error: true}); }
+}
+async function deleteHero(id){
+  const h = heroById(id);
+  if (!await confirmDlg('Archive hero "' + (h ? h.name : id) + '"? It stops influencing prompts but stays in hero_assets.json.', 'Archive hero')) return;
+  try {
+    await api('/api/hero_delete', {id});
+    toast('Hero archived');
+    await fetchRefs();
+    renderRefs();
+  } catch (e){ toast(e.message, {error: true}); }
+}
+async function massRegen(id){
+  const h = heroById(id);
+  const tagged = h ? taggedShotsFor(h) : [];
+  const withFrames = tagged.filter(s => s._frame_url).length;
+  if (!await confirmDlg('Mass-regenerate ' + withFrames + ' rendered frame' + (withFrames === 1 ? '' : 's') +
+      ' tagged with "' + (h ? h.name : id) + '"? Each is an image-to-image edit (1–3 min per frame); old versions are kept in history.', 'Start')) return;
+  try {
+    const d = await api('/api/mass_regen', {hero_id: id});
+    toast('Mass regen queued: ' + d.count + ' shot' + (d.count === 1 ? '' : 's'));
+    trackJob(d.job_id, 'Mass regen: ' + (d.hero || id));
+  } catch (e){ toast(e.message, {error: true}); }
+}
 </script>
 <script>
-/* ============ Archive ============ */
-function renderArchive(){
-  const archived = [];
-  S.shots.forEach((s, i) => { if (s.status === 'archived') archived.push({s, i, key: keyFor(s, i)}); });
-  if (!archived.length){
-    $('archiveRow').innerHTML = '<div class="empty-state" style="width:100%"><div class="big">Nothing archived</div>Archived shots will appear here and can be restored anytime.</div>';
-    return;
-  }
-  $('archiveRow').innerHTML = archived.map(({s, key}) => {
-    const img = s._frame_url
-      ? '<img src="' + escA(s._frame_url) + '" data-view-frame="' + escA(s._frame_url) + '" alt="">'
-      : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-faint)">No image</div>';
-    return '<div class="card"><div class="thumb">' + img + '</div>' +
-      '<div class="name">' + esc((s.output_file || 'untitled').split('/').pop()) + '</div>' +
-      '<button class="btn" data-restore="' + escA(key) + '">\u21a9 Restore</button></div>';
-  }).join('');
+/* ============ Shotlist ============ */
+const SL_SHORT = {'Duration(seconds)':'Dur (s)','Page(s)':'Pages','Length(8ths)':'8ths','Notes/Assumptions':'Notes','Shot Type/Framing':'Framing','Lens/Focal Length':'Lens','Characters in Shot':'Characters','Camera Movement':'Movement','Camera Angle':'Angle','Time of Day':'ToD','Asset(s)':'Assets'};
+function backupSaved(){
+  $('backupTxt').textContent = 'auto-backup every 10 min · saved ' + new Date().toLocaleTimeString();
 }
-$('archiveRow').addEventListener('click', async e => {
-  const res = e.target.closest('[data-restore]');
-  const view = e.target.closest('[data-view-frame]');
-  if (view){
-    $('fullImg').src = view.getAttribute('data-view-frame');
-    $('imageModal').classList.add('open');
+function renderShotlist(){
+  const cols = S.slCols;
+  if (!cols.length){ $('slHead').innerHTML = ''; $('slBody').innerHTML = ''; return; }
+  $('slHead').innerHTML = '<tr>' + cols.map(c =>
+    '<th title="' + escA(c) + '">' + esc(SL_SHORT[c] || c) + '</th>').join('') + '</tr>';
+  if (!S.shotlist.length){
+    $('slBody').innerHTML = '';
+    $('slEmpty').style.display = 'block';
+    $('slEmpty').innerHTML = '<div class="big">Shotlist is empty</div>' +
+      'Add a row by hand, or pull every shot from the Shots tab.<br><br>' +
+      '<button class="btn btn-accent" data-act="slAdd">+ Add row</button> ' +
+      '<button class="btn" data-act="syncShotlist">&#8645; Sync from Shots</button>';
+    $('slRowCount').textContent = '';
     return;
   }
-  if (!res) return;
-  const p = payloadFor(res.getAttribute('data-restore'));
-  if (!p) return;
+  $('slEmpty').style.display = 'none';
+  $('slBody').innerHTML = S.shotlist.map((r, i) => {
+    const order = r['Order'] || '';
+    return '<tr data-order="' + escA(order) + '" data-idx="' + i + '">' + cols.map(c => {
+      const v = r[c] || '';
+      return '<td data-col="' + escA(c) + '" data-val="' + escA(v) + '" title="Click to edit">' + esc(v) + '</td>';
+    }).join('') + '</tr>';
+  }).join('');
+  $('slRowCount').textContent = S.shotlist.length + ' row' + (S.shotlist.length === 1 ? '' : 's');
+}
+$('slBody').addEventListener('click', e => {
+  const td = e.target.closest('td[data-col]');
+  if (!td || td.querySelector('input')) return;
+  startCellEdit(td);
+});
+function startCellEdit(td){
+  const col = td.getAttribute('data-col');
+  const tr = td.closest('tr');
+  const order = tr.getAttribute('data-order');
+  const rowIdx = parseInt(tr.getAttribute('data-idx'), 10);
+  if (isNaN(rowIdx)){ toast('Could not resolve the row — refresh and retry', {error: true}); return; }
+  const cur = td.getAttribute('data-val') || '';
+  td.textContent = '';
+  const inp = document.createElement('input');
+  inp.className = 'sl-input';
+  inp.value = cur;
+  td.appendChild(inp);
+  inp.focus();
+  inp.select();
+  let done = false;
+  const cancel = () => { done = true; renderShotlist(); };
+  const commit = async () => {
+    if (done) return;
+    done = true;
+    const v = inp.value;
+    if (v === cur){ renderShotlist(); return; }
+    try {
+      await api('/api/shotlist_update', {row_index: rowIdx, Order: order, field: col, value: v});
+      backupSaved();
+      await fetchShotlist();
+      toast(col + ' saved');
+    } catch (err){
+      toast(err.message, {error: true});
+      renderShotlist();
+    }
+  };
+  inp.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter'){ ev.preventDefault(); inp.blur(); }
+    else if (ev.key === 'Escape'){ ev.stopPropagation(); cancel(); }
+  });
+  inp.addEventListener('blur', commit);
+}
+async function addShotlistRow(){
   try {
-    const d = await api('/api/unarchive', p);
-    toast('Restored (' + d.status + ')');
-    await refreshData();
-    renderArchive();
+    const d = await api('/api/shotlist_create', {});
+    backupSaved();
+    await fetchShotlist();
+    toast('Row ' + d.row.Order + ' added — click any cell to edit');
+  } catch (e){ toast(e.message, {error: true}); }
+}
+
+/* ============ Archive tab ============ */
+function renderArchive(){
+  const archivedShots = [];
+  S.shots.forEach((s, i) => { if (s.status === 'archived') archivedShots.push({s, i, key: keyFor(s, i)}); });
+  let html = '';
+  // archived shots
+  html += '<div class="ref-cat"><h3>Archived shots<span class="n">' + archivedShots.length + '</span></h3>';
+  if (!archivedShots.length){
+    html += '<div class="count">Nothing archived. Archived shots appear here and can be restored anytime.</div>';
+  } else {
+    html += '<div class="card-row">' + archivedShots.map(({s, key}) => {
+      const img = s._frame_url
+        ? '<img src="' + escA(s._frame_url) + '" data-view-frame="' + escA(s._frame_url) + '" alt="">'
+        : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-faint)">No image</div>';
+      return '<div class="card"><div class="thumb">' + img + '</div>' +
+        '<div class="name">' + esc((s.output_file || 'untitled').split('/').pop()) + '</div>' +
+        '<button class="btn" data-restore="' + escA(key) + '">↩ Restore</button></div>';
+    }).join('') + '</div>';
+  }
+  html += '</div>';
+  // archived refs
+  html += '<div class="ref-cat"><h3>Archived references<span class="n">' + S.archRefs.length + '</span></h3>';
+  html += S.archRefs.length
+    ? '<div class="card-row">' + S.archRefs.map(fn => refCard(fn, {mode: 'archived'})).join('') + '</div>'
+    : '<div class="count">No archived references.</div>';
+  html += '</div>';
+  // binned refs (collapsible sub-section)
+  html += '<details class="bin"' + (S.binRefs.length ? '' : '') + '><summary>Bin — ' + S.binRefs.length +
+    ' deleted reference' + (S.binRefs.length === 1 ? '' : 's') + ' (files kept on disk)</summary>';
+  html += S.binRefs.length
+    ? '<div class="card-row">' + S.binRefs.map(fn => refCard(fn, {mode: 'bin'})).join('') + '</div>'
+    : '<div class="count">The bin is empty.</div>';
+  html += '</details>';
+  $('archiveGrid').innerHTML = html;
+}
+$('archiveGrid').addEventListener('click', async e => {
+  const res = e.target.closest('[data-restore]');
+  const refRes = e.target.closest('[data-refrestore]');
+  const viewFrame = e.target.closest('[data-view-frame]');
+  const view = e.target.closest('[data-view]');
+  try {
+    if (viewFrame){
+      $('fullImg').src = viewFrame.getAttribute('data-view-frame');
+      $('imageModal').classList.add('open');
+    } else if (view){
+      $('fullImg').src = '/api/ref/' + encodeURIComponent(view.getAttribute('data-view'));
+      $('imageModal').classList.add('open');
+    } else if (refRes){
+      await api('/api/ref_restore', {file: refRes.getAttribute('data-refrestore')});
+      toast('Reference restored');
+      fetchRefs();
+    } else if (res){
+      const p = payloadFor(res.getAttribute('data-restore'));
+      if (!p) return;
+      const d = await api('/api/unarchive', p);
+      toast('Restored (' + d.status + ')');
+      await refreshData();
+    }
   } catch (err){ toast(err.message, {error: true}); }
 });
-
+</script>
+<script>
 /* ============ Modals ============ */
 function openModal(id){ $(id).classList.add('open'); }
-function closeModal(id){ $(id).classList.remove('open'); }
-function openHelp(){ openModal('helpModal'); }
+function closeModal(id){ $(id).classList.remove('open'); if (id === 'confirmModal') settleConfirm(false); }
 function anyModalOpen(){ return !!document.querySelector('.modal.open'); }
 document.querySelectorAll('.modal').forEach(m => {
-  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+  m.addEventListener('click', e => { if (e.target === m) closeModal(m.id); });
 });
 $('fullImg').addEventListener('click', () => closeModal('imageModal'));
+
+/* Confirmation dialog (promise-based, replaces window.confirm) */
+let confirmResolve = null;
+function confirmDlg(msg, yesLabel){
+  return new Promise(res => {
+    confirmResolve = res;
+    $('confirmMsg').textContent = msg;
+    $('confirmYesBtn').textContent = yesLabel || 'Confirm';
+    openModal('confirmModal');
+  });
+}
+function settleConfirm(v){
+  $('confirmModal').classList.remove('open');
+  if (confirmResolve){ const r = confirmResolve; confirmResolve = null; r(v); }
+}
+
+/* ============ Global action delegation (no inline onclick) ============ */
+const ACTIONS = {
+  help: () => openModal('helpModal'),
+  close: el => closeModal(el.getAttribute('data-modal')),
+  clearFilters,
+  refresh: refreshAll,
+  newShot: showCreateForm,
+  createShot,
+  duplicate: duplicateShot,
+  gen: generateShot,
+  editImg: showEditPrompt,
+  editShot,
+  archiveShot,
+  saveField: saveFieldEdit,
+  syncShotlist,
+  slAdd: addShotlistRow,
+  refGen: showRefGenerate,
+  generateRef,
+  editRef,
+  newCategory: addCategory,
+  showHeroes: () => { S.refView = S.refView === 'heroes' ? 'refs' : 'heroes'; renderRefs(); },
+  heroNew: () => openHeroModal(null),
+  heroSave: saveHero,
+  newProject: () => {
+    $('projNameErr').classList.remove('on');
+    $('projName').classList.remove('invalid');
+    openModal('projectModal');
+    $('projName').focus();
+  },
+  createProject,
+  confirmYes: () => settleConfirm(true),
+  confirmNo: () => settleConfirm(false),
+};
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const fn = ACTIONS[el.getAttribute('data-act')];
+  if (fn) fn(el);
+});
+$('tabBar').addEventListener('click', e => {
+  const b = e.target.closest('.tab[data-tab]');
+  if (b) switchTab(b.getAttribute('data-tab'));
+});
+
+/* ============ Control wiring ============ */
+$('search').addEventListener('input', renderGrid);
+$('statusFilter').addEventListener('change', renderGrid);
+$('sceneFilter').addEventListener('change', renderGrid);
+$('refSearch').addEventListener('input', renderRefs);
+$('newScene').addEventListener('input', autoGenFilename);
+$('statusSelect').addEventListener('change', e => setStatus(e.target.value));
+$('projectSel').addEventListener('change', e => switchProject(e.target.value));
+$('qualitySel').addEventListener('change', e => saveSetting('quality', e.target.value));
+$('modelSel').addEventListener('change', e => saveSetting('model', e.target.value));
+$('exportSel').addEventListener('change', e => {
+  const v = e.target.value;
+  if (!v) return;
+  const parts = v.split('|');
+  window.location = '/api/export?what=' + parts[0] + '&format=' + parts[1];
+  e.target.value = '';
+  toast('Export started — check your downloads');
+});
 
 /* ============ Keyboard ============ */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape'){
-    document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+    document.querySelectorAll('.modal.open').forEach(m => closeModal(m.id));
     S.fieldEdit = null;
     return;
   }
@@ -1084,7 +1834,7 @@ document.addEventListener('keydown', e => {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   if (anyModalOpen()) return;
   if (e.key === '/'){ e.preventDefault(); $('search').focus(); return; }
-  if (e.key === '?'){ e.preventDefault(); openHelp(); return; }
+  if (e.key === '?'){ e.preventDefault(); openModal('helpModal'); return; }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
     e.preventDefault();
     const keys = S.displayedKeys;
@@ -1099,6 +1849,7 @@ document.addEventListener('keydown', e => {
   if (!S.selectedKey) return;
   if (e.key === 'a') setStatus('approved');
   if (e.key === 'g') generateShot();
+  if (e.key === 'd') duplicateShot();
   if (e.key === 'e'){
     const found = shotByKey(S.selectedKey);
     if (found && found.shot._frame_url) showEditPrompt();
@@ -1106,7 +1857,7 @@ document.addEventListener('keydown', e => {
 });
 
 /* ============ Init ============ */
-refreshData();
+refreshAll();
 </script>
 </body>
 </html>
