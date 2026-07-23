@@ -132,18 +132,7 @@ td.sl-sel .btn:hover{color:var(--red)}
 .viewer-actions .btn{padding:4px 12px;font-size:11px}
 
 /* ============ References layout ============ */
-.refs-layout{display:flex;flex:1;min-height:0;min-width:0}
-.tree{width:224px;flex-shrink:0;border-right:1px solid var(--border);overflow-y:auto;padding:var(--s2);background:var(--surface)}
-.tree .node{display:flex;justify-content:space-between;align-items:center;gap:var(--s1);padding:3px 8px;border-radius:var(--r1);cursor:pointer;font-size:12px;color:var(--text-dim);user-select:none}
-.tree .node:hover{color:var(--text);background:var(--surface-2)}
-.tree .node.active{background:var(--accent-dim);color:var(--accent)}
-.tree .node .n{color:var(--text-faint);font-size:10px;font-variant-numeric:tabular-nums;flex-shrink:0}
-.tree .node .lbl{display:flex;align-items:center;gap:5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tree .node .tw{width:11px;flex-shrink:0;font-size:8px;line-height:1;color:var(--text-faint);text-align:center}
-.tree .node.active .tw{color:var(--accent)}
-.tree .node.root{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-top:var(--s2)}
-.tree .node.child{margin-left:24px}
-.tree .node.all{font-weight:700;margin-top:0}
+.sub-tabs{display:flex;flex-wrap:wrap;gap:2px;margin-bottom:var(--s3)}
 
 /* ============ Refs + archive cards ============ */
 .cards{flex:1;overflow:auto;padding:var(--s4);align-content:flex-start}
@@ -355,20 +344,17 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 
 <!-- REFERENCES TAB -->
 <div id="tabRefs" class="content">
-  <div class="refs-layout">
-    <div class="tree" id="refTree"></div>
-    <div class="col">
-      <div class="toolbar">
-        <input id="refSearch" class="input" placeholder="Filter references&hellip;" style="width:200px">
-        <button class="btn btn-accent" data-act="refGen">+ New reference</button>
-        <button class="btn" data-act="newCategory" title="Add a category to the tree">+ Category</button>
-        <button class="btn" data-act="showHeroes" id="heroBtn">&#9733; Hero Assets <span class="n" id="heroCount"></span></button>
-        <button class="btn" data-act="showDescriptions" id="descBtn" title="Canonical text descriptions injected into storyboard prompts">&#128221; Descriptions</button>
-        <span class="spacer"></span>
-        <span class="count" id="refCount2"></span>
-      </div>
-      <div class="cards" id="refsGrid"></div>
+  <div class="col">
+    <div class="toolbar">
+      <input id="refSearch" class="input" placeholder="Filter references&hellip;" style="width:200px">
+      <button class="btn btn-accent" data-act="refGen">+ New reference</button>
+      <button class="btn" data-act="newCategory" title="Add a sub-category">+ Category</button>
+      <button class="btn" data-act="showHeroes" id="heroBtn">&#9733; Hero Assets <span class="n" id="heroCount"></span></button>
+      <button class="btn" data-act="showDescriptions" id="descBtn" title="Canonical text descriptions injected into storyboard prompts">&#128221; Descriptions</button>
+      <span class="spacer"></span>
+      <span class="count" id="refCount2"></span>
     </div>
+    <div class="cards" id="refsGrid"></div>
   </div>
 </div>
 
@@ -703,9 +689,9 @@ const S = {
   sortDir: 1,
   busyKeys: new Set(),  // shots with a generate/edit in flight
   fieldEdit: null,      // {key, field}
-  refSelCat: 'uncategorized', // '' = all
-  treeOpen: new Set(),  // expanded tree roots
-  refView: 'refs',      // 'refs' | 'heroes'
+  refTab: 'characters', // references top-level category tab
+  refSub: '',           // references sub-category filter ('' = all)
+  refView: 'refs',      // 'refs' | 'heroes' | 'descriptions'
   descCat: 'characters', // descriptions-panel category filter
   refEditFile: null,
   heroEditId: null,
@@ -1026,7 +1012,7 @@ function updateBadges(){
 async function switchProject(name){
   try {
     await api('api/project_switch', {name});
-    S.selectedKey = null; S.refSelCat = 'uncategorized'; S.refView = 'refs'; S.treeOpen.clear();
+    S.selectedKey = null; S.refTab = 'characters'; S.refSub = ''; S.refView = 'refs';
     clearViewer();
     await refreshAll();
     toast('Switched to ' + name);
@@ -1043,7 +1029,7 @@ async function createProject(){
     const d = await api('api/project_create', {name});
     closeModal('projectModal');
     $('projName').value = '';
-    S.selectedKey = null; S.refSelCat = 'uncategorized'; S.refView = 'refs'; S.treeOpen.clear();
+    S.selectedKey = null; S.refTab = 'characters'; S.refSub = ''; S.refView = 'refs';
     clearViewer();
     await refreshAll();
     toast('Project created: ' + d.name);
@@ -1485,50 +1471,66 @@ function refCatCounts(){
   for (const [cat, imgs] of Object.entries(S.refCats)) counts[cat] = imgs.length;
   return counts;
 }
-function renderRefTree(){
-  const counts = refCatCounts();
-  const all = [...new Set([...S.categories, ...Object.keys(S.refCats)])].sort();
-  // parents come from canonical roots, flat categories, and the left part of any 'a/b' path;
-  // 'uncategorized' is always shown — it's the default selection
-  const derived = all.filter(c => c.includes('/')).map(c => c.split('/')[0]);
-  const roots = [...new Set([...all.filter(c => !c.includes('/')), ...derived, 'uncategorized'])];
-  // stable order: canonical roots first, then any extras alphabetically
-  const ordered = [...S.catRoots, ...roots.filter(r => !S.catRoots.includes(r)).sort()];
-  const total = Object.values(counts).reduce((a, n) => a + n, 0);
-  const active = (cat) => (S.refView === 'refs' && S.refSelCat === cat) ? ' active' : '';
-  const rollup = (root) => (counts[root] || 0) + all.filter(c => c.startsWith(root + '/'))
-      .reduce((a, c) => a + (counts[c] || 0), 0);
-  let html = '<div class="node all' + active('') + '" data-cat="">All references <span class="n">(' + total + ')</span></div>';
-  for (const root of ordered){
-    const kids = all.filter(c => c.startsWith(root + '/')).sort();
-    const open = S.treeOpen.has(root);
-    const arrow = kids.length ? (open ? '&#9660;' : '&#9654;') : '';
-    html += '<div class="node root' + active(root) + '" data-cat="' + escA(root) + '" data-root="1">' +
-      '<span class="lbl"><span class="tw">' + arrow + '</span>' + esc(root.replace(/_/g, ' ')) + '</span>' +
-      '<span class="n">(' + rollup(root) + ')</span></div>';
-    if (open){
-      for (const c of kids){
-        const leaf = c.slice(root.length + 1);
-        html += '<div class="node child' + active(c) + '" data-cat="' + escA(c) + '">' +
-          '<span class="lbl">' + esc(leaf.replace(/_/g, ' ')) + '</span>' +
-          '<span class="n">(' + (counts[c] || 0) + ')</span></div>';
-      }
+/* Reference top-level categories mirror the Descriptions panel tabs.
+   'props' is the catch-all: anything that isn't a character or a location. */
+const REF_TABS = [['characters','Characters'],['locations','Locations'],['props','Props']];
+const REF_SUB_ALL = '__all__';
+let refKeywordCache = null;
+function refKeywords(){
+  if (refKeywordCache) return refKeywordCache;
+  const chars = new Set(), locs = new Set();
+  // sub-category leaf names from the canonical category list
+  for (const c of [...S.categories, ...Object.keys(S.refCats)]){
+    if (c.startsWith('characters/')) chars.add(c.split('/')[1].replace(/_/g, ' '));
+    else if (c.startsWith('locations/')) locs.add(c.split('/')[1].replace(/_/g, ' '));
+  }
+  // hero-asset names, split by their declared category
+  for (const h of S.heroes){
+    const n = (h.name || '').toLowerCase();
+    if (!n) continue;
+    if (h.category === 'characters') chars.add(n);
+    else if (h.category === 'locations') locs.add(n);
+  }
+  // hand-tuned fallbacks for loosely-named / uncategorized images
+  ['ben','waif','marie','jack','mother','woman in white','lady in white','others','the man','preston','jamie','ricky','neighbor','lawyer','schrodinger']
+    .forEach(x => chars.add(x));
+  ['cabin','suburban','intersection','broken bow','motel','forest','woods','bridge','hospital','court','mansion','new york','institution','house','freeway','driveway','road']
+    .forEach(x => locs.add(x));
+  refKeywordCache = {chars: [...chars].filter(Boolean), locs: [...locs].filter(Boolean)};
+  return refKeywordCache;
+}
+/* Which top-level tab a reference file belongs to. Category path wins;
+   loosely-categorised images fall back to name matching. */
+function refTopCat(fn){
+  const top = fn.split('/')[0];
+  if (top === 'characters') return 'characters';
+  if (top === 'locations') return 'locations';
+  if (top === 'hero_props' || top === 'vehicles') return 'props';
+  const low = fn.toLowerCase();
+  const kw = refKeywords();
+  if (kw.chars.some(w => low.includes(w))) return 'characters';
+  if (kw.locs.some(w => low.includes(w))) return 'locations';
+  return 'props';
+}
+/* Sub-category label for a file, within its tab (leaf of its category path). */
+function refSubCat(fn){
+  const parts = fn.split('/');
+  if (parts.length >= 3) return parts.slice(1, -1).join('/');   // characters/ben/x.png -> ben
+  return '(unsorted)';
+}
+/* tab -> { subLabel -> [files] }, honouring the search filter. */
+function classifyRefs(q){
+  const tabs = {characters: {}, locations: {}, props: {}};
+  for (const files of Object.values(S.refCats)){
+    for (const fn of files){
+      if (q && !fn.toLowerCase().includes(q)) continue;
+      const tab = refTopCat(fn);
+      const sub = refSubCat(fn);
+      (tabs[tab][sub] = tabs[tab][sub] || []).push(fn);
     }
   }
-  $('refTree').innerHTML = html;
+  return tabs;
 }
-$('refTree').addEventListener('click', e => {
-  const n = e.target.closest('.node');
-  if (!n) return;
-  const cat = n.getAttribute('data-cat') || '';
-  if (n.hasAttribute('data-root')){
-    // parent row: toggle its children open/closed; selection follows the click
-    if (S.treeOpen.has(cat)) S.treeOpen.delete(cat); else S.treeOpen.add(cat);
-  }
-  S.refSelCat = cat;
-  S.refView = 'refs';
-  renderRefs();
-});
 
 /* ============ References: grid ============ */
 function refCard(fn, opts){
