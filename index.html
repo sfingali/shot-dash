@@ -119,8 +119,8 @@ td.sl-sel .btn:hover{color:var(--red)}
 .progress.on{display:block}
 .progress i{display:block;height:100%;width:40%;background:var(--accent);animation:slide 1.2s ease-in-out infinite}
 @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
-.version-strip{display:flex;gap:var(--s1);overflow-x:auto;padding-bottom:2px}
-.version-strip:empty{display:none}
+.version-strip{flex-shrink:0;height:40px;display:flex;align-items:center;gap:var(--s1);overflow-x:auto;padding:0 var(--s4);background:var(--surface);border-top:1px solid var(--border)}
+.version-strip .none{color:var(--text-faint);font-size:11px}
 .version-strip img{width:56px;height:26px;object-fit:cover;border:1px solid var(--border);border-radius:2px;cursor:pointer;flex-shrink:0}
 .version-strip img:hover{border-color:var(--accent)}
 .viewer-info{flex:1;overflow-y:auto;font-size:12px;min-width:0}
@@ -1206,9 +1206,13 @@ $('viewerInfo').addEventListener('click', e => {
 function renderVersionStrip(s){
   let hist = [];
   try { hist = JSON.parse(s.version_history || '[]'); } catch (e) {}
-  $('versionStrip').innerHTML = hist.map(fn =>
-    '<img src="/api/frame/' + encodeURIComponent(fn) + '" title="' + escA(fn) + ' — click to make current" data-swap="' + escA(fn) + '" onerror="this.remove()">'
-  ).join('');
+  if (hist.length) {
+    $('versionStrip').innerHTML = hist.map(fn =>
+      '<img src="/api/frame/' + encodeURIComponent(fn) + '" title="' + escA(fn) + ' — click to make current" data-swap="' + escA(fn) + '" onerror="this.remove()">'
+    ).join('');
+  } else {
+    $('versionStrip').innerHTML = '<span class="none">No previous versions</span>';
+  }
 }
 $('versionStrip').addEventListener('click', async e => {
   const el = e.target.closest('img[data-swap]');
