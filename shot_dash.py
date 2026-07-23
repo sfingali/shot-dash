@@ -2770,7 +2770,7 @@ class Handler(BaseHTTPRequestHandler):
             hero_slug = _slug(hero.get("name", hero_id)) or _slug(hero_id) or "asset"
             n = 1
             ref_name = "%03d_%s.png" % (n, hero_slug)
-            while ref_name in existing:
+            while os.path.splitext(ref_name)[0] in existing:
                 n += 1
                 ref_name = "%03d_%s.png" % (n, hero_slug)
             
