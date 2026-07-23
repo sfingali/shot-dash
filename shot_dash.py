@@ -2172,14 +2172,17 @@ class Handler(BaseHTTPRequestHandler):
                     new_row["output_file"] = "%s_%d%s" % (base, n, ext)
             autofill_shot(new_row)
             # Seed the curated description on creation so the user can see
-            # and edit it before generating. Only the seed belongs here —
-            # lens, location, heroes and house style are appended by
-            # build_generation_prompt() at generate time, so baking them in
-            # now would emit every one of them twice.
+            # and edit it before generating. Include hero tags so curation is
+            # visibly different from raw instructions, but keep the full hero
+            # descriptions out — those are injected by build_generation_prompt.
             if not (new_row.get("curated_description") or "").strip():
                 verbatim = (new_row.get("verbatim_instructions") or "").strip()
                 if verbatim:
-                    new_row["curated_description"] = verbatim[:300]
+                    curated = verbatim
+                    tags = (new_row.get("hero_tags") or "").strip()
+                    if tags:
+                        curated += "\n[Heroes: " + tags + "]"
+                    new_row["curated_description"] = curated
             # Insert after a specific row if after_file is provided
             after_file = (data.get("after_file") or "").strip()
             pos = len(rows)
