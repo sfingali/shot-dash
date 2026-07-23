@@ -2605,7 +2605,7 @@ class Handler(BaseHTTPRequestHandler):
         if hero is None:
             raise ApiError("Unknown hero: " + hero_id, 404)
         key = require_openai_key()
-        img_bytes = openai_generate_image(prompt, quality if quality in QUALITY_LEVELS else active_quality(), key)
+        img_bytes = openai_generate_image(prompt, key, quality if quality in QUALITY_LEVELS else active_quality())
         scene = "ref"
         output_file, _ = next_version_name("ref_gen.png", scene)
         fd = frames_dir()
