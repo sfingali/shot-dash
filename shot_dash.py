@@ -2301,7 +2301,15 @@ class Handler(BaseHTTPRequestHandler):
                     raise ApiError("Source image not found: " + old_file)
             with open(source_path, "rb") as sf:
                 source_data = sf.read()
-        edit_prompt = edit_instructions + EDIT_SUFFIX
+        edit_prompt = edit_instructions
+        # Inject hero asset descriptions for any newly tagged heroes
+        hero_tags = (data.get("hero_tags") or "").strip()
+        if hero_tags:
+            heroes = load_heroes()
+            fragments = hero_fragments(hero_tags, heroes)
+            if fragments:
+                edit_prompt = fragments + ". " + edit_prompt
+        edit_prompt = edit_prompt + EDIT_SUFFIX
         key = require_openai_key()
         quality = requested_quality(data)
         img_bytes = openai_edit_image(source_data, edit_prompt, key, quality)
