@@ -441,6 +441,9 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <select id="heroGenQuality"></select>
   <div class="hint" id="heroGenCost"></div>
 </div>
+<div class="field"><label for="heroGenCount">Generations</label>
+  <input id="heroGenCount" value="1" type="number" min="1" max="9">
+</div>
 <div class="modal-foot">
   <button class="btn" data-act="close" data-modal="heroGenModal">Cancel</button>
   <button class="btn btn-accent" data-act="genFromHero">Generate</button>
@@ -698,13 +701,31 @@ const S = {
   descCat: 'characters', // descriptions-panel category filter
   refEditFile: null,
   heroEditId: null,
+  shotKeys: [],         // unique key per S.shots row (dedupes duplicate output_file)
 };
 const $ = id => document.getElementById(id);
 const SHOT_COLS = ['shot_number','scene_number','status','characters','hero_tags','location','lens','generation_method','iteration_count','estimated_cost','verbatim_instructions','output_file'];
 const COL_LABELS = {shot_number:'#',scene_number:'Sc',status:'Status',characters:'Characters',hero_tags:'Heroes',location:'Location',lens:'Lens',generation_method:'Method',iteration_count:'v',estimated_cost:'$',verbatim_instructions:'Instructions',output_file:'File'};
 const NUMERIC_COLS = new Set(['shot_number','scene_number','iteration_count','generation_number']);
 
-function keyFor(shot, serverIdx){ return shot.output_file ? shot.output_file : 'row:' + serverIdx; }
+/* Duplicate output_file rows would otherwise collapse into one key, making
+   the later rows unselectable and routing edits to the wrong CSV row. The
+   first occurrence keeps the bare filename (so selection survives a
+   refresh); later duplicates get a synthetic '::<row>' suffix. */
+function computeShotKeys(){
+  const seen = new Map();
+  S.shotKeys = S.shots.map((s, i) => {
+    const f = (s.output_file || '').trim();
+    if (!f) return 'row:' + i;
+    const n = seen.get(f) || 0;
+    seen.set(f, n + 1);
+    return n ? f + '::' + i : f;
+  });
+}
+function keyFor(shot, serverIdx){
+  if (S.shotKeys[serverIdx] !== undefined) return S.shotKeys[serverIdx];
+  return shot.output_file ? shot.output_file : 'row:' + serverIdx;
+}
 function shotByKey(key){
   for (let i = 0; i < S.shots.length; i++){
     if (keyFor(S.shots[i], i) === key) return {shot: S.shots[i], idx: i};
@@ -714,7 +735,11 @@ function shotByKey(key){
 function payloadFor(key){
   const found = shotByKey(key);
   if (!found) return null;
-  return found.shot.output_file ? {output_file: found.shot.output_file} : {row_index: found.idx};
+  // The server resolves output_file to the FIRST matching row, so rows with
+  // a synthetic duplicate key must be addressed by row_index instead.
+  if (found.shot.output_file && key === found.shot.output_file)
+    return {output_file: found.shot.output_file};
+  return {row_index: found.idx};
 }
 function esc(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function escA(t){ return esc(t).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
@@ -886,7 +911,7 @@ function fillQualitySelects(){
   const opts = defOpt + S.qualities.map(q =>
     '<option value="' + escA(q) + '">' + esc(q) +
     (qualityCost(q) ? ' — ' + esc(qualityCost(q)) : '') + '</option>').join('');
-  ['genQualitySel','refGenQuality','editQuality','refEditQuality'].forEach(id => {
+  ['genQualitySel','refGenQuality','editQuality','refEditQuality','heroGenQuality'].forEach(id => {
     const sel = $(id);
     const cur = sel.value;
     sel.innerHTML = opts;
@@ -926,6 +951,7 @@ function updateRefEditCost(){
 async function fetchShots(){
   const [shotsRes, framesRes] = await Promise.all([api('api/shots'), api('api/frames')]);
   S.shots = shotsRes.shots || [];
+  computeShotKeys();
   const frames = framesRes.frames || {}, framesLower = framesRes.frames_lower || {};
   for (const s of S.shots){
     const fn = s.output_file || '';
@@ -957,6 +983,7 @@ async function fetchRefs(){
   S.categories = cats.categories || [];
   S.catRoots = cats.roots || [];
   S.heroes = heroes.heroes || [];
+  refKeywordCache = null;   // categories/heroes may have changed the tab classification
   // datalists: categories (ref generate) + ref image paths (hero modal)
   const dl = $('refCatList'); dl.innerHTML = '';
   [...new Set([...S.categories, ...Object.keys(S.refCats)])].sort().forEach(c => {
@@ -1309,21 +1336,17 @@ async function generateShot(){
 }
 function showEditPrompt(){
   if (!S.selectedKey) return;
-  // Aggressively clear any stale state
-  $('genOverlay').classList.remove('on');
-  overlayJobs = 0;
-  S.busyKeys.clear();
-  syncBusyUI();
-  // Clear and focus
   $('editInstrErr').classList.remove('on');
   $('editInstr').classList.remove('invalid');
   $('editInstr').value = '';
-  // Force modal visible
-  const modal = $('editModal');
-  modal.style.display = 'flex';
-  modal.style.alignItems = 'center';
-  modal.style.justifyContent = 'center';
-  modal.style.zIndex = '999';
+  updateEditCost();
+  // openModal adds the .open class (so Escape/backdrop dismissal and
+  // anyModalOpen() work) and clears any stuck generation overlay. The old
+  // inline-style forcing bypassed all of that: the modal couldn't be closed
+  // with Escape, blocked every click underneath, and left the global
+  // keyboard shortcuts live — pressing g/e outside the textarea fired
+  // generateShot and put the progress overlay on screen instead.
+  openModal('editModal');
   $('editInstr').focus();
 }
 async function editShot(){
@@ -1562,26 +1585,51 @@ function refCard(fn, opts){
     (opts.showCat !== false ? '<div class="cat">' + esc(cat || 'uncategorized') + '</div>' : '') +
     '</div>';
 }
+/* Stable sub-category ordering shared by renderRefs and visibleRefFiles so
+   the on-screen order and the lightbox arrow-key order always agree. */
+function refSubNames(subs){
+  return Object.keys(subs).sort((a, b) =>
+    a === '(unsorted)' ? 1 : b === '(unsorted)' ? -1 : a.localeCompare(b));
+}
 function renderRefs(){
-  renderRefTree();
   refLazyReset();
   $('heroBtn').classList.toggle('btn-accent', S.refView === 'heroes');
   $('descBtn').classList.toggle('btn-accent', S.refView === 'descriptions');
   if (S.refView === 'heroes'){ renderHeroPanel(); return; }
   if (S.refView === 'descriptions'){ renderDescPanel(); return; }
   const q = ($('refSearch').value || '').toLowerCase();
-  const cats = Object.keys(S.refCats).sort();
-  let html = '', total = 0, eager = 0;
-  const card = (fn, opts) => refCard(fn, Object.assign({lazy: eager++ >= REF_LAZY_BATCH}, opts));
-  for (const cat of cats){
-    const imgs = (S.refCats[cat] || []).filter(f => !q || f.toLowerCase().includes(q));
+  const tabs = classifyRefs(q);
+  if (!REF_TABS.some(([t]) => t === S.refTab)) S.refTab = 'characters';
+  let html = '<div class="tabs" style="margin-bottom:var(--s3)">' +
+    REF_TABS.map(([t, label]) => {
+      const n = Object.values(tabs[t]).reduce((a, l) => a + l.length, 0);
+      return '<button class="tab' + (S.refTab === t ? ' active' : '') + '" data-reftab="' + escA(t) + '">' +
+        esc(label) + ' <span class="n">' + (n || '') + '</span></button>';
+    }).join('') + '</div>';
+  const subs = tabs[S.refTab];
+  const subNames = refSubNames(subs);
+  if (S.refSub && S.refSub !== REF_SUB_ALL && !subNames.includes(S.refSub)) S.refSub = '';
+  const showAll = !S.refSub || S.refSub === REF_SUB_ALL;
+  if (subNames.length > 1){
+    html += '<div class="tabs" style="margin-bottom:var(--s3)">' +
+      '<button class="tab' + (showAll ? ' active' : '') + '" data-refsub="' + REF_SUB_ALL + '">All</button>' +
+      subNames.map(s =>
+        '<button class="tab' + (S.refSub === s ? ' active' : '') + '" data-refsub="' + escA(s) + '">' +
+        esc(s) + ' <span class="n">' + subs[s].length + '</span></button>').join('') + '</div>';
+  }
+  let total = 0, eager = 0;
+  const card = fn => refCard(fn, {showCat: false, lazy: eager++ >= REF_LAZY_BATCH});
+  for (const s of subNames){
+    if (!showAll && s !== S.refSub) continue;
+    const imgs = subs[s];
     if (!imgs.length) continue;
     total += imgs.length;
-    html += '<div class="ref-cat"><h3>' + esc(cat) + '<span class="n">' + imgs.length + '</span></h3><div class="card-row">' +
-      imgs.map(fn => card(fn, {showCat: false})).join('') + '</div></div>';
+    html += '<div class="ref-cat"><h3>' + esc(s) + '<span class="n">' + imgs.length + '</span></h3><div class="card-row">' +
+      imgs.map(card).join('') + '</div></div>';
   }
-  if (!html){
-    html = '<div class="empty-state"><div class="big">No references yet</div>Generate the first reference image.</div>';
+  if (!total){
+    html += '<div class="empty-state"><div class="big">' + (q ? 'No references match' : 'No references in this tab') + '</div>' +
+      (q ? 'Nothing in this tab matches the filter.' : 'Generate the first reference image, or check the other tabs.') + '</div>';
   }
   $('refsGrid').innerHTML = html;
   $('refCount2').textContent = total ? total + ' refs' : '';
@@ -1626,7 +1674,9 @@ function refLazyObserve(){
 }
 $('refsGrid').addEventListener('click', e => {
   const tb = e.target.closest('[data-reftab]');
-  if (tb){ S.refTab = tb.getAttribute('data-reftab'); renderRefs(); }
+  if (tb){ S.refTab = tb.getAttribute('data-reftab'); S.refSub = ''; renderRefs(); return; }
+  const sb = e.target.closest('[data-refsub]');
+  if (sb){ S.refSub = sb.getAttribute('data-refsub'); renderRefs(); }
 });
 $('refsGrid').addEventListener('click', async e => {
   const del = e.target.closest('[data-del]');
@@ -1796,8 +1846,12 @@ function renderHeroPanel(){
   }
   html += heroes.map(h => {
     const tagged = taggedShotsFor(h);
-    const thumb = h.ref_image
-      ? '<img loading="lazy" src="api/thumb/ref/' + encodeURIComponent(h.ref_image) + '" data-view="' + escA(h.ref_image) + '" onerror="this.style.display=\'none\'" alt="">'
+    // Generated thumbnails (api/generate_from_hero writes thumb_file) win
+    // over a manually entered ref_image — the backend was already saving
+    // thumb_file but the card never read it.
+    const heroImg = h.thumb_file || h.ref_image;
+    const thumb = heroImg
+      ? '<img loading="lazy" src="api/thumb/ref/' + encodeURIComponent(heroImg) + '" data-view="' + escA(heroImg) + '" onerror="this.style.display=\'none\'" alt="">'
       : '';
     const shotsList = tagged.length
       ? tagged.map(s => esc(s.output_file || ('sc ' + s.scene_number))).join('<br>')
@@ -1813,6 +1867,7 @@ function renderHeroPanel(){
       '<div class="h-shots">' + shotsList + '</div>' +
       '<div class="h-acts">' +
       '<button class="btn" data-hedit="' + escA(h.id) + '">✎ Edit</button>' +
+      '<button class="btn" data-hgen="' + escA(h.id) + '" title="Generate a reference render from this hero\u2019s description — saved to the reference tree and used as the card thumbnail">🎬 Generate</button>' +
       '<button class="btn btn-accent" data-hregen="' + escA(h.id) + '" title="Image-to-image edit every tagged frame to match this hero">⚡ Mass Regenerate</button>' +
       '<button class="btn btn-danger" data-hdel="' + escA(h.id) + '">Archive</button>' +
       '</div></div>';
@@ -2349,13 +2404,12 @@ let shotNavList = null, shotNavIdx = -1;
 let imgModalFile = null, imgBarTimer = null;
 function visibleRefFiles(){
   const q = ($('refSearch').value || '').toLowerCase();
-  const sel = S.refSelCat;
+  const subs = classifyRefs(q)[S.refTab] || {};
+  const showAll = !S.refSub || S.refSub === REF_SUB_ALL;
   const files = [];
-  for (const cat of Object.keys(S.refCats).sort()){
-    if (sel && cat !== sel && !cat.startsWith(sel + '/')) continue;
-    for (const f of (S.refCats[cat] || [])){
-      if (!q || f.toLowerCase().includes(q)) files.push(f);
-    }
+  for (const s of refSubNames(subs)){
+    if (!showAll && s !== S.refSub) continue;
+    files.push(...subs[s]);
   }
   return files;
 }
@@ -2509,11 +2563,14 @@ genFromHero: async () => {
     const hero = heroById(heroGenTargetId);
     if (!hero) return;
     const quality = $('heroGenQuality').value;
+    const count = Math.min(9, Math.max(1, parseInt($('heroGenCount').value, 10) || 1));
     closeModal("heroGenModal");
-    const end = startJob("Generating storyboard from " + hero.name);
+    const end = startJob("Generating " + count + " storyboard" + (count===1?"":"s") + " from " + hero.name);
     try {
-        const d = await api("api/generate_from_hero", {hero_id: hero.id, prompt, quality});
-        toast("Generated: " + d.output_file);
+        for (let g = 0; g < count; g++) {
+            const d = await api("api/generate_from_hero", {hero_id: hero.id, prompt, quality});
+            if (g === 0) toast("Generated: " + d.output_file);
+        }
         await refreshData();
     } catch(e) { toast(e.message, {error:true}); }
     finally { end(); }
