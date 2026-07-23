@@ -194,6 +194,7 @@ details.bin summary:hover{color:var(--text)}
 .modal-inner .err.on{display:block}
 .modal-foot{display:flex;gap:var(--s2);justify-content:flex-end;margin-top:var(--s4)}
 .modal-full-img{max-width:95vw;max-height:95vh;border-radius:var(--r1)}
+.img-nav-hint{position:absolute;bottom:var(--s3);left:50%;transform:translateX(-50%);font-size:11px;color:var(--text-dim);background:rgba(11,12,14,.7);padding:2px 10px;border-radius:9px;pointer-events:none}
 .kbd-list{display:grid;grid-template-columns:auto 1fr;gap:var(--s2) var(--s4);font-size:12px}
 kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1px solid var(--border-strong);border-bottom-width:2px;border-radius:var(--r1);padding:1px 6px;color:var(--text)}
 
@@ -589,6 +590,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 
 <div class="modal" id="imageModal">
   <img class="modal-full-img" id="fullImg" alt="">
+  <div class="img-nav-hint" id="imgNavHint" style="display:none">&larr; &rarr; to navigate</div>
 </div>
 
 <div id="toasts"></div>
@@ -1161,10 +1163,7 @@ function selectShot(key, keepScroll){
 }
 $('viewerFrame').addEventListener('click', () => {
   const found = S.selectedKey && shotByKey(S.selectedKey);
-  if (found && found.shot._frame_url){
-    $('fullImg').src = found.shot._frame_url;
-    $('imageModal').classList.add('open');
-  }
+  if (found && found.shot._frame_url) openImageModal(found.shot._frame_url);
 });
 $('viewerInfo').addEventListener('click', e => {
   const el = e.target.closest('.editable');
@@ -1518,8 +1517,8 @@ $('refsGrid').addEventListener('click', async e => {
     } else if (hregen){
       massRegen(hregen.getAttribute('data-hregen'));
     } else if (view){
-      $('fullImg').src = '/api/ref/' + encodeURIComponent(view.getAttribute('data-view'));
-      $('imageModal').classList.add('open');
+      const fn = view.getAttribute('data-view');
+      openImageModal('/api/ref/' + encodeURIComponent(fn), fn);
     }
   } catch (err){ toast(err.message, {error: true}); }
 });
@@ -1982,11 +1981,9 @@ $('archiveGrid').addEventListener('click', async e => {
   const view = e.target.closest('[data-view]');
   try {
     if (viewFrame){
-      $('fullImg').src = viewFrame.getAttribute('data-view-frame');
-      $('imageModal').classList.add('open');
+      openImageModal(viewFrame.getAttribute('data-view-frame'));
     } else if (view){
-      $('fullImg').src = '/api/ref/' + encodeURIComponent(view.getAttribute('data-view'));
-      $('imageModal').classList.add('open');
+      openImageModal('/api/ref/' + encodeURIComponent(view.getAttribute('data-view')));
     } else if (refRes){
       await api('/api/ref_restore', {file: refRes.getAttribute('data-refrestore')});
       toast('Reference restored');
@@ -2010,6 +2007,37 @@ document.querySelectorAll('.modal').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) closeModal(m.id); });
 });
 $('fullImg').addEventListener('click', () => closeModal('imageModal'));
+
+/* Full-size image viewer — arrow-key navigation for reference images.
+   refNavList holds the ref files visible under the current category/filter
+   (same order as renderRefs); null when the open image isn't navigable. */
+let refNavList = null, refNavIdx = -1;
+function visibleRefFiles(){
+  const q = ($('refSearch').value || '').toLowerCase();
+  const sel = S.refSelCat;
+  const files = [];
+  for (const cat of Object.keys(S.refCats).sort()){
+    if (sel && cat !== sel && !cat.startsWith(sel + '/')) continue;
+    for (const f of (S.refCats[cat] || [])){
+      if (!q || f.toLowerCase().includes(q)) files.push(f);
+    }
+  }
+  return files;
+}
+function openImageModal(src, refFile){
+  refNavList = refFile ? visibleRefFiles() : null;
+  refNavIdx = refNavList ? refNavList.indexOf(refFile) : -1;
+  const canNav = !!(refNavList && refNavIdx >= 0 && refNavList.length > 1);
+  if (!canNav){ refNavList = null; refNavIdx = -1; }
+  $('imgNavHint').style.display = canNav ? '' : 'none';
+  $('fullImg').src = src;
+  $('imageModal').classList.add('open');
+}
+function refNav(dir){
+  if (!refNavList) return;
+  refNavIdx = (refNavIdx + dir + refNavList.length) % refNavList.length;   // wraps
+  $('fullImg').src = '/api/ref/' + encodeURIComponent(refNavList[refNavIdx]);
+}
 
 /* Confirmation dialog (promise-based, replaces window.confirm) */
 let confirmResolve = null;
@@ -2106,6 +2134,11 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape'){
     document.querySelectorAll('.modal.open').forEach(m => closeModal(m.id));
     S.fieldEdit = null;
+    return;
+  }
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && $('imageModal').classList.contains('open')){
+    e.preventDefault();
+    refNav(e.key === 'ArrowRight' ? 1 : -1);
     return;
   }
   const tag = document.activeElement && document.activeElement.tagName;
