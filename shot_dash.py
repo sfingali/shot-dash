@@ -140,8 +140,7 @@ BACKUP_INTERVAL = 600
 BACKUP_KEEP = 200  # snapshots kept per project
 
 HOUSE_STYLE = ("Desaturated palette, cool shadows. Photorealistic cinematic "
-               "still from an indie horror film. Scope 2.39:1. No text, no "
-               "watermark, no logos.")
+               "still from an indie horror film. Scope 2.39:1.")
 
 EDIT_SUFFIX = (". Keep everything else the same: composition, lighting, "
                "palette, mood. Photorealistic cinematic still from an indie "
