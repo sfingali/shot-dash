@@ -1598,9 +1598,10 @@ def hero_regen_prompt(hero):
     return ". ".join(bits) + EDIT_SUFFIX
 
 
-def _commit_edit(old_file, img_bytes, edit_prompt):
+def _commit_edit(old_file, img_bytes, edit_prompt, quality=None):
     """Write an edited frame to disk and version-bump its CSV row. Shared
     by /api/edit and the mass-regeneration worker."""
+    quality = quality if quality in QUALITY_LEVELS else active_quality()
     with CSV_LOCK:
         rows, fieldnames = read_csv()
         idx, shot = find_row_by_file(rows, old_file)
@@ -2142,9 +2143,10 @@ class Handler(BaseHTTPRequestHandler):
                 source_data = sf.read()
         edit_prompt = edit_instructions + EDIT_SUFFIX
         key = require_openai_key()
-        img_bytes = openai_edit_image(source_data, edit_prompt, key)
+        quality = requested_quality(data)
+        img_bytes = openai_edit_image(source_data, edit_prompt, key, quality)
         output_file, new_v, history = _commit_edit(old_file, img_bytes,
-                                                   edit_prompt)
+                                                   edit_prompt, quality)
         self._json({"ok": True, "output_file": output_file,
                     "size_kb": len(img_bytes) // 1024, "version": new_v,
                     "history": history})

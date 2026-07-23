@@ -410,6 +410,10 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <div class="hint">Composition, lighting, palette and mood are preserved automatically. Takes 1&ndash;3 minutes.</div>
   <div class="err" id="editInstrErr">Describe the edit first.</div>
 </div>
+<div class="field"><label for="editQuality">Quality</label>
+  <select id="editQuality"></select>
+  <div class="hint" id="editCost"></div>
+</div>
 <div class="modal-foot">
   <button class="btn" data-act="close" data-modal="editModal">Cancel</button>
   <button class="btn btn-accent" data-act="editShot">Start edit</button>
@@ -796,7 +800,7 @@ function fillQualitySelects(){
   const opts = defOpt + S.qualities.map(q =>
     '<option value="' + escA(q) + '">' + esc(q) +
     (qualityCost(q) ? ' — ' + esc(qualityCost(q)) : '') + '</option>').join('');
-  ['genQualitySel','refGenQuality'].forEach(id => {
+  ['genQualitySel','refGenQuality','editQuality'].forEach(id => {
     const sel = $(id);
     const cur = sel.value;
     sel.innerHTML = opts;
@@ -804,6 +808,12 @@ function fillQualitySelects(){
   });
   updateGenCost();
   updateRefGenCost();
+  updateEditCost();
+}
+function updateEditCost(){
+  const q = $('editQuality').value || S.settings.quality || 'medium';
+  $('editCost').textContent = qualityCost(q) ? 'est. ' + qualityCost(q) : '';
+  $('editCost').title = 'Estimated cost per edit at ' + q + ' quality';
 }
 function updateGenCost(){
   const q = $('genQualitySel').value || S.settings.quality || 'medium';
@@ -1214,11 +1224,14 @@ async function editShot(){
   const found = key && shotByKey(key);
   const p = key && payloadFor(key);
   if (!found || !p) return;
+  const quality = $('editQuality').value;   // '' = project default
   closeModal('editModal');
   $('editInstr').value = '';
   const end = startJob('Editing sc ' + (found.shot.scene_number || '?'), key);
   try {
-    const d = await api('/api/edit', Object.assign({edit_instructions: instr}, p));
+    const body = Object.assign({edit_instructions: instr}, p);
+    if (quality) body.quality = quality;
+    const d = await api('/api/edit', body);
     S.selectedKey = d.output_file;
     toast('Edited → ' + d.output_file + ' (v' + d.version + ')');
     await refreshData();
@@ -2038,6 +2051,7 @@ $('qualitySel').addEventListener('change', e => saveSetting('quality', e.target.
 $('modelSel').addEventListener('change', e => saveSetting('model', e.target.value));
 $('genQualitySel').addEventListener('change', updateGenCost);
 $('refGenQuality').addEventListener('change', updateRefGenCost);
+$('editQuality').addEventListener('change', updateEditCost);
 $('refGenCount').addEventListener('input', updateRefGenCost);
 function onExportChange(e){
   const v = e.target.value;
