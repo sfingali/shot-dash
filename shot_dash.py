@@ -1924,7 +1924,7 @@ class Handler(BaseHTTPRequestHandler):
             self._file(HTML_PATH, CT["html"])
 
         elif path == "/api/health":
-            self._json({"ok": True, "file": thumb_file, "time": time.time()})
+            self._json({"ok": True, "time": time.time()})
 
         elif path == "/favicon.ico":
             self._respond(204, "image/x-icon", b"")
@@ -2188,7 +2188,7 @@ class Handler(BaseHTTPRequestHandler):
             for r, n in zip(targets, numbers):
                 r["shot_number"] = n
             write_csv(rows, fieldnames)
-        self._json({"ok": True, "file": thumb_file, "reordered": len(targets)})
+        self._json({"ok": True, "reordered": len(targets)})
 
     def api_reorder_all(self, data):
         """Global sequential renumbering: 'order' lists output_files in the
@@ -2271,7 +2271,7 @@ class Handler(BaseHTTPRequestHandler):
                         break
             rows.insert(pos, new_row)
             write_csv(rows, fieldnames)
-        self._json({"ok": True, "file": thumb_file, "row": new_row})
+        self._json({"ok": True, "row": new_row})
 
     def api_update(self, data):
         """Set one field. Accepts {field, value} plus a resolve_row payload
@@ -2303,7 +2303,7 @@ class Handler(BaseHTTPRequestHandler):
             prev = row.get("status") or "pending"
             row["status"] = "archived"
             write_csv(rows, fieldnames)
-        self._json({"ok": True, "file": thumb_file, "previous_status": prev})
+        self._json({"ok": True, "previous_status": prev})
 
     def api_unarchive(self, data):
         """Restore an archived shot. 'restore_status' lets the client undo
@@ -2320,7 +2320,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 row["status"] = "pending"
             write_csv(rows, fieldnames)
-        self._json({"ok": True, "file": thumb_file, "status": row["status"]})
+        self._json({"ok": True, "status": row["status"]})
 
     # === GENERATION ENDPOINTS (OpenAI image calls) ===
     # The OpenAI call happens OUTSIDE the CSV lock (it can take 3 minutes);
@@ -2380,7 +2380,7 @@ class Handler(BaseHTTPRequestHandler):
             autofill_shot(shot)
             history = clean_version_history(shot)
             write_csv(rows, fieldnames)
-        self._json({"ok": True, "file": thumb_file, "output_file": output_file,
+        self._json({"ok": True, "output_file": output_file,
                     "size_kb": len(img_bytes) // 1024, "version": new_v,
                     "history": history})
 
@@ -2432,7 +2432,7 @@ class Handler(BaseHTTPRequestHandler):
         img_bytes = openai_edit_image(source_data, edit_prompt, key, quality)
         output_file, new_v, history = _commit_edit(old_file, img_bytes,
                                                    edit_prompt, quality)
-        self._json({"ok": True, "file": thumb_file, "output_file": output_file,
+        self._json({"ok": True, "output_file": output_file,
                     "size_kb": len(img_bytes) // 1024, "version": new_v,
                     "history": history})
 
@@ -2459,7 +2459,7 @@ class Handler(BaseHTTPRequestHandler):
             shot["version_history"] = json.dumps(history)
             cleaned = clean_version_history(shot)
             write_csv(rows, fieldnames)
-        self._json({"ok": True, "file": thumb_file, "current": swap_file, "history": cleaned})
+        self._json({"ok": True, "current": swap_file, "history": cleaned})
 
     def api_generate_ref(self, data):
         verbatim = (data.get("verbatim_instructions") or "").strip()
@@ -2486,7 +2486,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(cat_dir, fname), "wb") as of:
                 of.write(img_bytes)
             files.append(category + "/" + fname)
-        self._json({"ok": True, "file": thumb_file, "files": files, "file": files[0],
+        self._json({"ok": True, "files": files, "file": files[0],
                     "category": category, "size_kb": len(img_bytes) // 1024})
 
     # === REFERENCE FILE ENDPOINTS (archive / bin / move — never delete) ===
@@ -2525,7 +2525,7 @@ class Handler(BaseHTTPRequestHandler):
         rel = (data.get("file") or "").strip()
         orig = self._strip_archive_prefix(rel)
         moved = self._move_ref(rel, REF_ARCHIVE + "/" + orig)
-        self._json({"ok": True, "file": thumb_file, "file": moved})
+        self._json({"ok": True, "file": moved})
 
     def api_ref_bin(self, data):
         """Move a reference to the bin (a subfolder of the archive). This
@@ -2533,7 +2533,7 @@ class Handler(BaseHTTPRequestHandler):
         rel = (data.get("file") or "").strip()
         orig = self._strip_archive_prefix(rel)
         moved = self._move_ref(rel, REF_BIN + "/" + orig)
-        self._json({"ok": True, "file": thumb_file, "file": moved})
+        self._json({"ok": True, "file": moved})
 
     api_ref_delete = api_ref_bin  # legacy URL — now bins instead of deleting
 
@@ -2543,7 +2543,7 @@ class Handler(BaseHTTPRequestHandler):
         if orig == rel:
             raise ApiError("Reference is not archived: " + rel)
         moved = self._move_ref(rel, orig)
-        self._json({"ok": True, "file": thumb_file, "file": moved})
+        self._json({"ok": True, "file": moved})
 
     def api_ref_move(self, data):
         rel = (data.get("file") or "").strip()
@@ -2560,7 +2560,7 @@ class Handler(BaseHTTPRequestHandler):
         dest_rel = category + "/" + os.path.basename(filepath)
         dest = os.path.join(refs_dir(), dest_rel)
         if os.path.abspath(dest) == os.path.abspath(filepath):
-            return self._json({"ok": True, "file": thumb_file, "file": rel})
+            return self._json({"ok": True, "file": rel})
         if os.path.exists(dest):
             raise ApiError("A file with that name already exists in " + category, 409)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -2568,7 +2568,7 @@ class Handler(BaseHTTPRequestHandler):
         cats = known_categories()
         if category not in cats:
             save_categories(cats + [category])
-        self._json({"ok": True, "file": thumb_file, "file": dest_rel})
+        self._json({"ok": True, "file": dest_rel})
 
     def api_category_add(self, data):
         category = re.sub(r"[^A-Za-z0-9_\-/]", "_",
@@ -2578,7 +2578,7 @@ class Handler(BaseHTTPRequestHandler):
         cats = known_categories()
         if category not in cats:
             save_categories(cats + [category])
-        self._json({"ok": True, "file": thumb_file, "category": category})
+        self._json({"ok": True, "category": category})
 
 
     def api_ref_edit(self, data):
@@ -2605,7 +2605,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(os.path.dirname(filepath), fname), "wb") as of:
                 of.write(img_bytes)
             files.append((rel_dir + "/" if rel_dir else "") + fname)
-        self._json({"ok": True, "file": thumb_file, "files": files, "file": files[0]})
+        self._json({"ok": True, "files": files, "file": files[0]})
 
     def api_describe_ref(self, data):
         """Reference image -> textual description via GPT-4o vision. The
@@ -2624,7 +2624,7 @@ class Handler(BaseHTTPRequestHandler):
         mime = CT.get(ext.lstrip(".")) if ext in ALLOWED_IMAGE_EXTS else None
         description = openai_describe_image(img_bytes, mime or "image/png",
                                             key)
-        self._json({"ok": True, "file": thumb_file, "file": rel, "description": description,
+        self._json({"ok": True, "file": rel, "description": description,
                     "model": VISION_MODEL})
 
     # === SHOT DUPLICATION ===
@@ -2666,7 +2666,7 @@ class Handler(BaseHTTPRequestHandler):
                 new_row["status"] = "pending"
             rows.insert(idx + 1, new_row)
             write_csv(rows, fieldnames)
-        self._json({"ok": True, "file": thumb_file, "row": new_row})
+        self._json({"ok": True, "row": new_row})
 
     # === HERO MASS REGENERATION (background job) ===
     def api_mass_regen(self, data):
@@ -2719,7 +2719,7 @@ class Handler(BaseHTTPRequestHandler):
             job_finish(job_id)
 
         threading.Thread(target=worker, daemon=True).start()
-        self._json({"ok": True, "file": thumb_file, "job_id": job_id, "count": len(targets),
+        self._json({"ok": True, "job_id": job_id, "count": len(targets),
                     "hero": hero.get("name", hero_id)})
 
     # GOTCHA: this staticmethod and everything below it MUST stay indented
@@ -2814,7 +2814,7 @@ class Handler(BaseHTTPRequestHandler):
                 of.write(img_bytes)
             rel = (cat + "/" + out_name) if cat not in ("", ".") else out_name
             saved.append(rel)
-        self._json({"ok": True, "file": thumb_file, "files": saved, "category": cat, "count": len(saved)})
+        self._json({"ok": True, "files": saved, "category": cat, "count": len(saved)})
 
     # === SHOTLIST ENDPOINTS (24-column VFX breakdown) ===
     def api_shotlist_create(self, data):
@@ -2831,7 +2831,7 @@ class Handler(BaseHTTPRequestHandler):
             rows.append(row)
             sort_shotlist(rows)
             write_shotlist(rows)
-        self._json({"ok": True, "file": thumb_file, "row": row})
+        self._json({"ok": True, "row": row})
 
     def api_shotlist_update(self, data):
         """Update one cell. Rows are addressed by row_index into the
@@ -2872,7 +2872,7 @@ class Handler(BaseHTTPRequestHandler):
             target[field] = value
             sort_shotlist(rows)
             write_shotlist(rows)
-        self._json({"ok": True, "file": thumb_file, "row": target})
+        self._json({"ok": True, "row": target})
 
     def api_shotlist_delete(self, data):
         """Delete one row, addressed by row_index into the Order-sorted
@@ -2915,7 +2915,7 @@ class Handler(BaseHTTPRequestHandler):
             for i in uniq:
                 rows.pop(i)
             write_shotlist(rows)
-        self._json({"ok": True, "file": thumb_file, "deleted": len(uniq)})
+        self._json({"ok": True, "deleted": len(uniq)})
 
     def api_shotlist_sync(self, data):
         """Create a shotlist row for every Shots-tab shot that doesn't have
@@ -2954,7 +2954,7 @@ class Handler(BaseHTTPRequestHandler):
                         changed = True
                 if changed:
                     write_csv(rows2, fn2)
-        self._json({"ok": True, "file": thumb_file, "created": created, "updated": 0})
+        self._json({"ok": True, "created": created, "updated": 0})
 
     def api_shotlist_import(self, data):
         """Import CSV text into the shotlist. The CSV rides in the JSON
@@ -3027,7 +3027,7 @@ class Handler(BaseHTTPRequestHandler):
                     created += 1
             sort_shotlist(rows)
             write_shotlist(rows)
-        self._json({"ok": True, "file": thumb_file, "mode": mode, "created": created,
+        self._json({"ok": True, "mode": mode, "created": created,
                     "updated": updated, "total": len(rows)})
 
     # === HERO ASSET ENDPOINTS ===
@@ -3054,7 +3054,7 @@ class Handler(BaseHTTPRequestHandler):
                 hero["type"] = "prop"
             heroes.append(hero)
             save_heroes(heroes)
-        self._json({"ok": True, "file": thumb_file, "hero": hero})
+        self._json({"ok": True, "hero": hero})
 
     def api_hero_update(self, data):
         hero_id = (data.get("id") or "").strip()
@@ -3072,7 +3072,7 @@ class Handler(BaseHTTPRequestHandler):
                 hero[field] = str(data.get("value", "") or "").strip()
             hero["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             save_heroes(heroes)
-        self._json({"ok": True, "file": thumb_file, "hero": hero})
+        self._json({"ok": True, "hero": hero})
 
     def api_hero_delete(self, data):
         """Archive, never delete — the hero stays in hero_assets.json and
@@ -3086,7 +3086,7 @@ class Handler(BaseHTTPRequestHandler):
             hero["archived"] = not data.get("restore", False)
             hero["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             save_heroes(heroes)
-        self._json({"ok": True, "file": thumb_file, "hero": hero})
+        self._json({"ok": True, "hero": hero})
 
     # === PROJECT ENDPOINTS ===
     def api_project_create(self, data):
@@ -3098,14 +3098,14 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError("Project already exists: " + name, 409)
         save_settings(default_settings(name))
         load_project(name)
-        self._json({"ok": True, "file": thumb_file, "name": name, "projects": list_projects()})
+        self._json({"ok": True, "name": name, "projects": list_projects()})
 
     def api_project_switch(self, data):
         name = (data.get("name") or "").strip()
         if not name:
             raise ApiError("Missing name")
         settings = load_project(name)
-        self._json({"ok": True, "file": thumb_file, "name": name,
+        self._json({"ok": True, "name": name,
                     "settings": {k: settings.get(k, "") for k in
                                  ("quality", "model", "file_prefix",
                                   "canon_dir")}})
@@ -3131,7 +3131,7 @@ class Handler(BaseHTTPRequestHandler):
             PROJECT[field] = value
             settings = dict(PROJECT)
         save_settings(settings)
-        self._json({"ok": True, "file": thumb_file,
+        self._json({"ok": True,
                     "settings": {k: settings.get(k, "") for k in
                                  ("quality", "model", "file_prefix",
                                   "canon_dir")}})
