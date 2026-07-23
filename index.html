@@ -2983,19 +2983,33 @@ const ACTIONS = {
       const applyStyle = $('heroGenStyle').checked;
     const count = Math.min(9, Math.max(1, parseInt($('heroGenCount').value, 10) || 1));
     closeModal('heroGenModal');
-    const end = startJob('Generating ' + count + ' reference image' + (count === 1 ? '' : 's') + ' from ' + hero.name);
+    const total = count;
+    let ok = 0, fail = 0;
+    const paint = () => {
+      $('batchProgressBar').style.width = Math.round((ok + fail) / total * 100) + '%';
+      $('batchProgressCounts').textContent = ok + '/' + total + ' done · ' + fail + ' failed · ' + (total - ok - fail) + ' queued';
+    };
+    $('batchProgressTitle').textContent = 'Generating ' + total + ' reference image' + (total === 1 ? '' : 's') + ' from ' + hero.name;
+    paint();
+    openModal('batchProgressModal');
+    let cancelled = false;
     try {
-      let files = [];
       for (let g = 0; g < count; g++) {
-        const body = {hero_id: hero.id, prompt, apply_style: applyStyle};
-        if (quality) body.quality = quality;
-        const d = await api('api/generate_from_hero', body);
-        if (d.file) files.push(d.file);
+        if (!$('batchProgressModal').classList.contains('open')){ cancelled = true; break; }
+        try {
+          const body = {hero_id: hero.id, prompt, apply_style: applyStyle};
+          if (quality) body.quality = quality;
+          await api('api/generate_from_hero', body);
+          ok++;
+        } catch (e){ fail++; }
+        paint();
       }
-      toast('Generated ' + files.length + ' reference image' + (files.length === 1 ? '' : 's'));
-      await fetchRefs();
     } catch (e){ toast(e.message, {error: true}); }
-    finally { end(); }
+    finally {
+      closeModal('batchProgressModal');
+      toast('Generated: ' + ok + ' ok' + (fail ? ', ' + fail + ' failed' : '') + (cancelled ? ' — cancelled' : ''), fail && !ok ? {error: true} : {});
+      await fetchRefs();
+    }
   },
   confirmYes: () => settleConfirm(true),
   confirmNo: () => settleConfirm(false),
