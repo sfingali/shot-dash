@@ -2064,10 +2064,24 @@ const SL_SHORT = {'Fountain Excerpt':'Fountain','Duration(seconds)':'Dur (s)','P
 function backupSaved(){
   $('backupTxt').textContent = 'auto-backup every 10 min · saved ' + new Date().toLocaleTimeString();
 }
+/* First storyboard thumbnail whose scene_number matches this shotlist row's
+   Scene column ('' if none). Simple scene-number match, first hit wins. */
+function slThumbForScene(scene){
+  const sc = String(scene == null ? '' : scene).trim();
+  if (!sc) return '';
+  const hit = S.shots.find(s => (s.scene_number || '').trim() === sc && s._frame_url);
+  return hit ? hit._frame_url : '';
+}
+function slThumbCell(scene){
+  const url = slThumbForScene(scene);
+  return url
+    ? '<td style="width:44px;padding:1px 4px"><img src="' + url + '" width="40" height="22" loading="lazy" style="display:block;object-fit:cover;border-radius:2px"></td>'
+    : '<td style="width:44px"></td>';
+}
 function renderShotlist(){
   const cols = S.slCols;
   if (!cols.length){ $('slHead').innerHTML = ''; $('slBody').innerHTML = ''; updateSlSelection(); syncSlTopScroll(); return; }
-  $('slHead').innerHTML = '<tr><th class="sl-sel"><input type="checkbox" id="slSelAll" title="Select all rows"></th>' + cols.map(c =>
+  $('slHead').innerHTML = '<tr><th style="width:44px"></th><th class="sl-sel"><input type="checkbox" id="slSelAll" title="Select all rows"></th>' + cols.map(c =>
     '<th title="' + escA(c) + '">' + esc(SL_SHORT[c] || c) + '</th>').join('') + '</tr>';
   if (!S.shotlist.length){
     $('slBody').innerHTML = '';
@@ -2086,6 +2100,7 @@ function renderShotlist(){
   $('slBody').innerHTML = S.shotlist.map((r, i) => {
     const order = r['Order'] || '';
     return '<tr data-order="' + escA(order) + '" data-idx="' + i + '">' +
+      slThumbCell(r['Scene']) +
       '<td class="sl-sel"><input type="checkbox" class="sl-check" data-idx="' + i + '" title="Select row">' +
       '<button class="btn btn-ghost" data-act="slDelete" data-idx="' + i + '" data-order="' + escA(order) + '" title="Delete row">&#10005;</button></td>' +
       cols.map(c => {
