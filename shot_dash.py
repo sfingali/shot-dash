@@ -446,6 +446,19 @@ def hero_by_id(heroes, hero_id):
     return None
 
 
+def hero_ref_category(hero):
+    """Reference-tree subdirectory a hero's generated thumbnail belongs in.
+    Prefer the hero's explicit category when it's a known root, else map
+    from its type; everything else falls back to hero_props (the Props
+    tab)."""
+    cat = (hero.get("category") or "").strip()
+    if cat in REF_ROOT_CATEGORIES:
+        return cat
+    t = (hero.get("type") or "").strip().lower()
+    return {"character": "characters", "location": "locations",
+            "vehicle": "vehicles"}.get(t, "hero_props")
+
+
 def shot_hero_tags(shot):
     return [t.strip() for t in (shot.get("hero_tags") or "").split(",")
             if t.strip()]
@@ -2612,7 +2625,30 @@ class Handler(BaseHTTPRequestHandler):
             "quality": active_quality(),
             "iteration_count": "1",
         })
-        self._json({"ok": True, "output_file": output_file, "shot": new_shot})
+        # Copy the render into the reference tree under the hero's category so
+        # it shows up in the References panel, and record it as the hero's
+        # thumbnail. A stable per-hero filename means a re-generate overwrites
+        # the previous thumbnail instead of piling up copies.
+        thumb_file = None
+        try:
+            cat = hero_ref_category(hero)
+            cat_dir = os.path.join(refs_dir(), cat)
+            os.makedirs(cat_dir, exist_ok=True)
+            ref_name = "hero_%s.png" % (_slug(hero_id) or "asset")
+            with open(os.path.join(cat_dir, ref_name), "wb") as rf:
+                rf.write(img_bytes)
+            thumb_file = cat + "/" + ref_name
+            with HEROES_LOCK:
+                heroes = load_heroes()
+                h = hero_by_id(heroes, hero_id)
+                if h is not None:
+                    h["thumb_file"] = thumb_file
+                    h["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                    save_heroes(heroes)
+        except OSError as e:
+            print("Warning: could not save hero thumbnail: %s" % e)
+        self._json({"ok": True, "output_file": output_file, "shot": new_shot,
+                    "thumb_file": thumb_file})
 
     # - shotlist endpoints -
     def api_shotlist_create(self, data):
@@ -2830,7 +2866,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # - hero asset endpoints -
     HERO_FIELDS = ("name", "type", "category", "description", "breakdown",
-                   "colors", "notes", "ref_image")
+                   "colors", "notes", "ref_image", "thumb_file")
 
     def api_hero_create(self, data):
         name = (data.get("name") or "").strip()
