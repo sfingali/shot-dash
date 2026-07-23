@@ -2756,43 +2756,9 @@ class Handler(BaseHTTPRequestHandler):
         key = require_openai_key()
         quality = requested_quality(data)
         img_bytes = openai_generate_image(prompt, key, quality)
-        # Unique output name per render — the old fixed base ("ref_gen.png"
-        # -> always "ref_gen_v2.png") made every hero render overwrite the
-        # previous one and collide with any existing CSV row of that name.
-        stamp = time.strftime("%Y%m%d_%H%M%S")
-        base = "%s_hero_%s_%s" % (file_prefix(), _slug(hero_id) or "asset",
-                                  stamp)
-        fd = frames_dir()
-        os.makedirs(fd, exist_ok=True)
-        with CSV_LOCK:
-            rows, fieldnames = read_csv()
-            taken = {(r.get("output_file") or "").strip() for r in rows}
-            output_file = base + "_v1.png"
-            n = 2
-            while (output_file in taken or
-                   os.path.exists(os.path.join(fd, output_file))):
-                output_file = "%s_%d_v1.png" % (base, n)
-                n += 1
-            with open(os.path.join(fd, output_file), "wb") as of:
-                of.write(img_bytes)
-            new_shot = Handler.create_shot_row({
-                "scene_number": "ref",
-                "output_file": output_file,
-                "prompt": prompt,
-                "hero_tags": str(hero.get("name", hero_id)),
-                "status": "generated",
-                "generation_method": "generate",
-                "endpoint": "/v1/images/generations",
-                "estimated_cost": QUALITY_COST.get(quality, "$0.07"),
-                "quality": quality,
-                "iteration_count": "1",
-            }, fieldnames)
-            rows.append(new_shot)
-            write_csv(rows, fieldnames)
-        # Copy the render into the reference tree under the hero's category so
-        # it shows up in the References panel, and record it as the hero's
-        # thumbnail. A stable per-hero filename means a re-generate overwrites
-        # the previous thumbnail instead of piling up copies.
+        # Save directly to the reference tree — no storyboard row. This is for
+        # generating reference images, not storyboards. The image lands in the
+        # hero's reference category and becomes the hero card thumbnail.
         thumb_file = None
         try:
             cat = hero_ref_category(hero)
@@ -2811,7 +2777,7 @@ class Handler(BaseHTTPRequestHandler):
                     save_heroes(heroes)
         except OSError as e:
             print("Warning: could not save hero thumbnail: %s" % e)
-        self._json({"ok": True, "output_file": output_file, "shot": new_shot,
+        self._json({"ok": True,
                     "thumb_file": thumb_file})
 
     # === REFERENCE VARIATIONS ===

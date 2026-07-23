@@ -441,7 +441,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 
 <div class="modal" id="heroGenModal">
 <div class="modal-inner">
-<h3>Generate storyboard from description</h3>
+<h3>Generate reference from description</h3>
 <div class="field"><label id="heroGenLabel">Hero: —</label></div>
 <div class="field"><label for="heroGenPrompt">Prompt</label>
   <textarea id="heroGenPrompt" rows="6"></textarea>
@@ -2887,7 +2887,7 @@ const ACTIONS = {
     const quality = $('heroGenQuality').value;   // '' = project default
     const count = Math.min(9, Math.max(1, parseInt($('heroGenCount').value, 10) || 1));
     closeModal('heroGenModal');
-    const end = startJob('Generating ' + count + ' storyboard' + (count === 1 ? '' : 's') + ' from ' + hero.name);
+    const end = startJob('Generating ' + count + ' reference image' + (count === 1 ? '' : 's') + ' from ' + hero.name);
     try {
       let files = [];
       for (let g = 0; g < count; g++) {
@@ -2896,9 +2896,8 @@ const ACTIONS = {
         const d = await api('api/generate_from_hero', body);
         if (d.output_file) files.push(d.output_file);
       }
-      toast('Generated ' + files.length + ' storyboard' + (files.length === 1 ? '' : 's') + (files[0] ? ' — ' + files[0] : ''));
-      await refreshData();
-      if (files[0]) selectShot(files[0]);
+      toast('Generated ' + files.length + ' reference image' + (files.length === 1 ? '' : 's'));
+      await fetchRefs();
     } catch (e){ toast(e.message, {error: true}); }
     finally { end(); }
   },
