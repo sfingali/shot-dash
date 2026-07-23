@@ -495,6 +495,27 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 </div>
 </div>
 
+<div class="modal" id="refVarModal">
+<div class="modal-inner">
+<h3>Generate variations</h3>
+<div class="field"><label id="refVarFile" class="mono" style="font-size:11px;color:var(--text-dim)"></label></div>
+<div class="field"><label for="refVarPrompt">Prompt (required)</label>
+  <textarea id="refVarPrompt" placeholder="Enter the prompt used to create this reference..."></textarea>
+  <div class="err" id="refVarErr">A prompt is required.</div>
+</div>
+<div class="field"><label for="refVarQuality">Quality</label>
+  <select id="refVarQuality"></select>
+  <div class="hint" id="refVarCost"></div>
+</div>
+<div class="field"><label for="refVarCount">Generations</label>
+  <input id="refVarCount" value="1" type="number" min="1" max="9">
+</div>
+<div class="modal-foot">
+  <button class="btn" data-act="close" data-modal="refVarModal">Cancel</button>
+  <button class="btn btn-accent" data-act="genVariations">Generate</button>
+</div>
+</div>
+</div>
 <div class="modal" id="refEditModal">
 <div class="modal-inner">
 <h3>Edit reference (image to image)</h3>
@@ -911,7 +932,7 @@ function fillQualitySelects(){
   const opts = defOpt + S.qualities.map(q =>
     '<option value="' + escA(q) + '">' + esc(q) +
     (qualityCost(q) ? ' — ' + esc(qualityCost(q)) : '') + '</option>').join('');
-  ['genQualitySel','refGenQuality','editQuality','refEditQuality','heroGenQuality'].forEach(id => {
+  ['genQualitySel','refGenQuality','editQuality','refEditQuality','heroGenQuality','refVarQuality'].forEach(id => {
     const sel = $(id);
     const cur = sel.value;
     sel.innerHTML = opts;
@@ -1568,6 +1589,7 @@ function refCard(fn, opts){
     acts = '<button data-refrestore="' + escA(fn) + '" title="Restore">↩</button>';
   } else {
     acts = '<button data-edit="' + escA(fn) + '" title="Image-to-image edit">✎</button>' +
+      '<button data-var="' + escA(fn) + '" title="Generate variations from same prompt">🔄</button>' +
       '<button data-desc="' + escA(fn) + '" title="Describe with GPT-4o vision">📋</button>' +
       '<button data-move="' + escA(fn) + '" title="Move to another category">→</button>' +
       '<button data-arch="' + escA(fn) + '" title="Archive">⬇</button>' +
@@ -1684,6 +1706,7 @@ $('refsGrid').addEventListener('click', async e => {
   const restore = e.target.closest('[data-refrestore]');
   const move = e.target.closest('[data-move]');
   const edit = e.target.closest('[data-edit]');
+  const vr = e.target.closest('[data-var]');
   const desc = e.target.closest('[data-desc]');
   const dval = e.target.closest('[data-dfield]');
   const dcat = e.target.closest('[data-desccat]');
@@ -1717,6 +1740,8 @@ $('refsGrid').addEventListener('click', async e => {
       fetchRefs();
     } else if (edit){
       showRefEdit(edit.getAttribute('data-edit'));
+    } else if (vr){
+      showRefVariations(vr.getAttribute('data-var'));
     } else if (desc){
       describeRef(desc.getAttribute('data-desc'));
     } else if (dcat){
@@ -1747,6 +1772,41 @@ function showRefGenerate(){
   updateRefGenCost();
   openModal('refGenModal');
   $('refGenInstr').focus();
+}
+let refVarFile = null;
+function showRefVariations(fn){
+  refVarFile = fn;
+  $('refVarFile').textContent = fn;
+  $('refVarErr').classList.remove('on');
+  $('refVarPrompt').classList.remove('invalid');
+  $('refVarPrompt').value = '';
+  openModal('refVarModal');
+  $('refVarPrompt').focus();
+}
+async function genVariations(){
+  const prompt = $('refVarPrompt').value.trim();
+  if (!prompt){
+    $('refVarErr').classList.add('on');
+    $('refVarPrompt').classList.add('invalid');
+    return;
+  }
+  const fn = refVarFile;
+  if (!fn) return;
+  const quality = $('refVarQuality').value;
+  const count = Math.min(9, Math.max(1, parseInt($('refVarCount').value, 10) || 1));
+  refVarFile = null;
+  closeModal('refVarModal');
+  const end = startJob('Variations: ' + fn.split('/').pop() + ' x' + count);
+  try {
+    const body = {file: fn, prompt, count};
+    if (quality) body.quality = quality;
+    const d = await api('api/ref_variations', body);
+    toast('Saved ' + d.count + ' variation' + (d.count > 1 ? 's' : '') + ' in ' + d.category);
+    $('refVarPrompt').value = '';
+    fetchRefs();
+  } catch (e){
+    toast(e.message, {error: true});
+  } finally { end(); }
 }
 function showRefEdit(fn){
   S.refEditFile = fn;
@@ -2545,6 +2605,7 @@ const ACTIONS = {
   refGen: showRefGenerate,
   generateRef,
   editRef,
+  genVariations,
   newCategory: addCategory,
   showHeroes: () => { S.refView = S.refView === 'heroes' ? 'refs' : 'heroes'; renderRefs(); },
   showDescriptions: () => { S.refView = S.refView === 'descriptions' ? 'refs' : 'descriptions'; renderRefs(); },
@@ -2562,7 +2623,7 @@ genFromHero: async () => {
     if (!prompt) return toast("Enter a prompt", {error:true});
     const hero = heroById(heroGenTargetId);
     if (!hero) return;
-    const quality = $('heroGenQuality').value;
+    const quality = $('heroGenQuality','refVarQuality').value;
     const count = Math.min(9, Math.max(1, parseInt($('heroGenCount').value, 10) || 1));
     closeModal("heroGenModal");
     const end = startJob("Generating " + count + " storyboard" + (count===1?"":"s") + " from " + hero.name);

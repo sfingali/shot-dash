@@ -2650,6 +2650,34 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "output_file": output_file, "shot": new_shot,
                     "thumb_file": thumb_file})
 
+    # - reference variations -
+    def api_ref_variations(self, data):
+        ref_file = (data.get("file") or "").strip()
+        prompt = (data.get("prompt") or "").strip()
+        quality = data.get("quality", "").strip()
+        count = min(9, max(1, int(data.get("count", 1) or 1)))
+        if not ref_file:
+            raise ApiError("Missing file parameter")
+        if not prompt:
+            raise ApiError("No prompt — enter one manually")
+        key = require_openai_key()
+        q = quality if quality in QUALITY_LEVELS else active_quality()
+        cat = os.path.dirname(ref_file) or "misc"
+        base_name = os.path.splitext(os.path.basename(ref_file))[0]
+        out_dir = os.path.join(refs_dir(), cat)
+        os.makedirs(out_dir, exist_ok=True)
+        saved = []
+        ts = str(int(time.time()))
+        for i in range(count):
+            img_bytes = openai_generate_image(prompt, key, q)
+            out_name = f"{base_name}_var_{ts}_{i+1}.png"
+            out_path = os.path.join(out_dir, out_name)
+            with open(out_path, "wb") as of:
+                of.write(img_bytes)
+            rel = os.path.join(cat, out_name) if cat != "." else out_name
+            saved.append(rel)
+        self._json({"ok": True, "files": saved, "category": cat, "count": len(saved)})
+
     # - shotlist endpoints -
     def api_shotlist_create(self, data):
         with SHOTLIST_LOCK:
@@ -2986,6 +3014,7 @@ Handler.POST_ROUTES = {
     "/api/ref_restore": Handler.api_ref_restore,
     "/api/ref_move": Handler.api_ref_move,
     "/api/ref_edit": Handler.api_ref_edit,
+        "/api/ref_variations": Handler.api_ref_variations,
     "/api/describe_ref": Handler.api_describe_ref,
     "/api/category_add": Handler.api_category_add,
     "/api/duplicate": Handler.api_duplicate,
