@@ -33,6 +33,25 @@ Reliability notes (v2):
         RestartSec=3
         [Install]
         WantedBy=default.target
+
+Custodian notes (read before editing):
+  * INDENTATION IS LOAD-BEARING. Every api_* method lives inside the Handler
+    class (starts ~line 1800). Dedenting a method — easy to do when pasting —
+    silently turns it into a module-level function, and the POST_ROUTES table
+    below the class then crashes at import with AttributeError on Handler.<n>.
+    After any edit in the Handler region run: python3 -m py_compile shot_dash.py
+    and start the server once — the routes table is built at import time, so a
+    dedented method fails fast, not at request time.
+  * Locking discipline: read-modify-write on shots CSV under CSV_LOCK, shotlist
+    under SHOTLIST_LOCK, hero_assets.json under HEROES_LOCK. NEVER hold two of
+    these at once (deadlock risk); see api_shotlist_sync for the pattern of
+    sequential lock scopes. Slow OpenAI calls (1-3 min) go OUTSIDE the lock;
+    re-resolve the row afterwards (see api_generate).
+  * output_file is the identity key of a shot row. It must stay unique across
+    the CSV — api_create and api_duplicate uniquify on insert; keep that
+    invariant if you add new row-creating endpoints.
+  * Nothing in this app ever deletes an image file. Archive/bin are moves
+    inside the refs tree; shot "archive" is a status flip. Preserve this.
 """
 
 import base64
@@ -287,7 +306,11 @@ def save_active_name(name):
 
 def load_project(name):
     """Point the module-level path globals at a project and make sure its
-    directories, shotlist and pre-populated reference categories exist."""
+    directories, shotlist and pre-populated reference categories exist.
+    SIDE EFFECTS: mutates the CSV_PATH/FRAMES_DIR/... globals (under
+    PROJECT_LOCK), creates project directories, rewrites active.json, and
+    refreshes THIS thread's request snapshot. In-flight requests on other
+    threads keep their old snapshot by design — see snapshot_ctx."""
     global PROJECT, CSV_PATH, FRAMES_DIR, REFS_DIR, SHOTLIST_PATH, CANON_DIR
     sp = settings_path(name)
     if not os.path.isfile(sp):
@@ -432,6 +455,8 @@ def load_heroes():
 
 
 def save_heroes(heroes):
+    # REQUIRES: HEROES_LOCK held by caller (every mutation path takes it).
+    # SIDE EFFECTS: atomically rewrites hero_assets.json.
     os.makedirs(os.path.dirname(heroes_path()), exist_ok=True)
     tmp = heroes_path() + ".tmp"
     with open(tmp, "w") as f:
@@ -460,6 +485,9 @@ def hero_ref_category(hero):
 
 
 def shot_hero_tags(shot):
+    # CONTRACT: the hero_tags CSV column is a comma-separated list of hero
+    # NAMES or IDS ("Ben — Motel, hero_3"); both are matched case-sensitively
+    # by hero_fragments/taggedShotsFor. The frontend writes names.
     return [t.strip() for t in (shot.get("hero_tags") or "").split(",")
             if t.strip()]
 
@@ -535,6 +563,7 @@ def read_shotlist():
 
 
 def write_shotlist(rows):
+    # REQUIRES: SHOTLIST_LOCK held by caller.
     _write_csv_file(shotlist_path(), rows, SHOTLIST_COLUMNS)
 
 
@@ -710,7 +739,11 @@ CSV_COLUMNS = [
 
 
 def read_csv():
-    """Read rows + fieldnames. Missing columns are added in memory only and
+    """REQUIRES: hold CSV_LOCK for any read-modify-write cycle (a bare
+    read for display may skip it, but every mutation path in this file
+    reads AND writes under one CSV_LOCK acquisition).
+
+    Read rows + fieldnames. Missing columns are added in memory only and
     persisted on the next write (the old version rewrote the CSV on every
     GET when migrating, which is wasteful and racy)."""
     path = csv_path()
@@ -732,7 +765,12 @@ def read_csv():
 
 
 def _write_csv_file(path, rows, fieldnames):
-    """Atomic CSV write with a timestamped backup beside it. Prunes that
+    """REQUIRES: caller holds the lock guarding this file (CSV_LOCK for the
+    shots CSV, SHOTLIST_LOCK for the shotlist). SIDE EFFECTS: writes the CSV
+    atomically AND drops a snapshot into <dir>/.csv_backups/, pruning old
+    ones.
+
+    Atomic CSV write with a timestamped backup beside it. Prunes that
     file's backups older than 7 days, keeps at most 50 per file."""
     csv_dir = os.path.dirname(os.path.abspath(path))
     stem = os.path.splitext(os.path.basename(path))[0]
@@ -769,6 +807,7 @@ def _write_csv_file(path, rows, fieldnames):
 
 
 def write_csv(rows, fieldnames):
+    # REQUIRES: CSV_LOCK held by caller.
     _write_csv_file(csv_path(), rows, fieldnames)
 
 
@@ -792,7 +831,14 @@ def find_row_by_file(rows, output_file):
 
 def resolve_row(rows, data):
     """Locate a shot by output_file (preferred — stable across client-side
-    sorting) or row_index (CSV order). Raises ApiError if not found."""
+    sorting) or row_index (CSV order). Raises ApiError if not found.
+
+    CONTRACT with the frontend (payloadFor() in index.html): the payload is
+    EITHER {"output_file": "<name>"} for a normally-keyed row, OR
+    {"row_index": <int>} for rows whose output_file is blank or a duplicate
+    (output_file resolves to the FIRST match only, so duplicates must come
+    in by index). row_index is an index into raw CSV order — the order
+    GET /api/shots returns — NOT the sorted/filtered grid order."""
     output_file = (data.get("output_file") or "").strip()
     if output_file:
         idx, row = find_row_by_file(rows, output_file)
@@ -1449,7 +1495,10 @@ def frame_exists(filename):
 
 
 def make_thumbnail(src_path, base_dir, width, cache_dirname=THUMB_DIRNAME):
-    """Return a cached width-px-wide thumbnail of src_path, generating it
+    """SIDE EFFECTS: writes/refreshes cache files under
+    base_dir/<cache_dirname>/ (atomic tmp+replace, safe under concurrency).
+
+    Return a cached width-px-wide thumbnail of src_path, generating it
     under base_dir/<cache_dirname>/ (mirroring the source tree) when missing
     or stale. Different widths must use different cache_dirnames so they
     don't overwrite each other. Falls back to src_path when Pillow is
@@ -1665,7 +1714,10 @@ def next_version_name(old_file, scene_number):
 
 
 def push_version(shot, old_file):
-    """Append old_file to the shot's version_history JSON list."""
+    """Append old_file to the shot's version_history JSON list.
+    CONTRACT: version_history is stored in the CSV as a JSON-encoded list
+    string ('["a.png","b.png"]') — both sides must json-parse it, never
+    split on commas (filenames could contain them)."""
     try:
         history = json.loads(shot.get("version_history") or "[]")
     except json.JSONDecodeError:
@@ -1733,7 +1785,9 @@ def hero_regen_prompt(hero):
 
 def _commit_edit(old_file, img_bytes, edit_prompt, quality=None):
     """Write an edited frame to disk and version-bump its CSV row. Shared
-    by /api/edit and the mass-regeneration worker."""
+    by /api/edit and the mass-regeneration worker.
+    REQUIRES: caller must NOT hold CSV_LOCK (this function acquires it).
+    SIDE EFFECTS: writes the new frame file AND rewrites the shots CSV."""
     quality = quality if quality in QUALITY_LEVELS else active_quality()
     with CSV_LOCK:
         rows, fieldnames = read_csv()
@@ -1788,7 +1842,9 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass  # quiet
 
-    # - plumbing -
+    # === RESPONSE PLUMBING ===
+    # Shared send helpers. Everything user-visible goes through _respond;
+    # JSON errors through _error. No endpoint writes to self.wfile directly.
     def _respond(self, status, content_type, body_bytes):
         try:
             self.send_response(status)
@@ -1851,7 +1907,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError("Expected a JSON object")
         return data
 
-    # - GET -
+    # === GET ENDPOINTS (read-only + image serving) ===
     def do_GET(self):
         snapshot_ctx()
         try:
@@ -2014,7 +2070,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._error("Not found", 404)
 
-    # - exports -
+    # === EXPORT ENDPOINTS ===
     def _export(self, parsed):
         """GET /api/export?what=shots|shotlist|all&format=csv|json"""
         q = urllib.parse.parse_qs(parsed.query)
@@ -2063,7 +2119,12 @@ class Handler(BaseHTTPRequestHandler):
                        "application/json",
                        "%s_%s_%s.json" % (pname, what, stamp))
 
-    # - POST -
+    # === POST DISPATCH ===
+    # GOTCHA: POST_ROUTES is populated AFTER the class body (bottom of this
+    # file). Any method accidentally dedented out of Handler makes that table
+    # raise AttributeError at import — the server won't start. That's the
+    # failure mode of careless pasting in this class; keep 4-space method
+    # indentation and re-run py_compile after edits here.
     POST_ROUTES = {}  # filled in below the class body
 
     def do_POST(self):
@@ -2096,7 +2157,7 @@ class Handler(BaseHTTPRequestHandler):
             if sem is not None:
                 sem.release()
 
-    # - simple CSV endpoints -
+    # === SHOT CSV ENDPOINTS (reorder / create / update / archive) ===
     def api_reorder(self, data):
         """Reorder within a visible subset: the listed rows exchange their
         existing shot_number values to match the new order; every row not
@@ -2214,8 +2275,11 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "row": new_row})
 
     def api_update(self, data):
-        """Set one field. Accepts {field, value} plus output_file/row_index.
-        Also accepts the legacy payload {row_index, status: X}."""
+        """Set one field. Accepts {field, value} plus a resolve_row payload
+        (output_file | row_index). Also accepts the legacy payload
+        {row_index, status: X}. GOTCHA: field can be ANY CSV column,
+        including output_file — writing a duplicate output_file here breaks
+        the identity invariant; the frontend never does this, keep it so."""
         field = data.get("field")
         value = data.get("value")
         if field is None and "status" in data:
@@ -2259,7 +2323,7 @@ class Handler(BaseHTTPRequestHandler):
             write_csv(rows, fieldnames)
         self._json({"ok": True, "status": row["status"]})
 
-    # - generation endpoints -
+    # === GENERATION ENDPOINTS (OpenAI image calls) ===
     # The OpenAI call happens OUTSIDE the CSV lock (it can take 3 minutes);
     # the row is re-resolved afterwards in case the CSV changed meanwhile.
 
@@ -2305,7 +2369,7 @@ class Handler(BaseHTTPRequestHandler):
             shot["prompt"] = prompt
             shot["aspect_ratio"] = shot.get("aspect_ratio") or "2.39:1"
             shot["quality"] = quality
-            shot["generation_method"] = shot.get("generation_method") or "generation"
+            shot["generation_method"] = shot.get("generation_method") or "generate"
             shot["estimated_cost"] = QUALITY_COST.get(quality, "$0.07")
             shot["iteration_count"] = str(new_v)
             if not shot.get("lens"):
@@ -2322,6 +2386,11 @@ class Handler(BaseHTTPRequestHandler):
                     "history": history})
 
     def api_edit(self, data):
+        # CONTRACT: body = {edit_instructions, edit_suffix?, hero_tags?,
+        # quality?} + resolve_row payload (output_file | row_index).
+        # hero_tags is comma-separated names/ids; edit_suffix replaces the
+        # built-in EDIT_SUFFIX when non-empty (frontend "Edit behaviour"
+        # field). The client loops for multi-edit (count is client-side).
         edit_instructions = (data.get("edit_instructions") or "").strip()
         if not edit_instructions:
             raise ApiError("Missing edit_instructions")
@@ -2339,13 +2408,26 @@ class Handler(BaseHTTPRequestHandler):
                     raise ApiError("Source image not found: " + old_file)
             with open(source_path, "rb") as sf:
                 source_data = sf.read()
-        edit_prompt = edit_instructions
-        # Inject hero asset descriptions for any newly tagged heroes
+        # Assemble the final prompt: hero fragments (consistency), then the
+        # edit itself, then the behaviour suffix. The old code built the
+        # hero-injected string into a variable it never sent (so tagged
+        # heroes had no effect on the edit) and dropped the client's
+        # edit_suffix field entirely.
+        parts = []
         hero_tags = (data.get("hero_tags") or "").strip()
         if hero_tags:
             fragments = hero_fragments({"hero_tags": hero_tags})
             if fragments:
-                edit_instructions = ". ".join(fragments) + ". " + edit_instructions
+                parts.append(". ".join(
+                    "Keep this element exactly consistent — " + f
+                    for f in fragments))
+        parts.append(edit_instructions)
+        edit_prompt = ". ".join(parts).rstrip(".")
+        suffix = (data.get("edit_suffix") or "").strip()
+        if suffix:
+            edit_prompt += ". " + suffix
+        else:
+            edit_prompt += EDIT_SUFFIX
         key = require_openai_key()
         quality = requested_quality(data)
         img_bytes = openai_edit_image(source_data, edit_prompt, key, quality)
@@ -2408,7 +2490,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "files": files, "file": files[0],
                     "category": category, "size_kb": len(img_bytes) // 1024})
 
-    # - reference archive & bin (nothing is ever deleted) -
+    # === REFERENCE FILE ENDPOINTS (archive / bin / move — never delete) ===
     @staticmethod
     def _strip_archive_prefix(rel):
         if rel.startswith(REF_BIN + "/"):
@@ -2418,7 +2500,10 @@ class Handler(BaseHTTPRequestHandler):
         return rel
 
     def _move_ref(self, rel, dest_rel):
-        """Move a ref inside the refs dir, uniquifying on collision."""
+        """Move a ref inside the refs dir, uniquifying on collision.
+        SIDE EFFECTS: renames a file on disk (never copies, never deletes).
+        Returns the possibly-uniquified dest rel path — callers must report
+        THAT to the client, not the requested one."""
         rd = refs_dir()
         filepath = safe_path(rd, rel)
         if not filepath:
@@ -2543,7 +2628,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "file": rel, "description": description,
                     "model": VISION_MODEL})
 
-    # - shot duplication -
+    # === SHOT DUPLICATION ===
     def api_duplicate(self, data):
         """Copy a shot row under a new unique output_file; the frame file
         (if any) is copied too so the duplicate previews immediately."""
@@ -2584,7 +2669,7 @@ class Handler(BaseHTTPRequestHandler):
             write_csv(rows, fieldnames)
         self._json({"ok": True, "row": new_row})
 
-    # - hero mass regeneration -
+    # === HERO MASS REGENERATION (background job) ===
     def api_mass_regen(self, data):
         """Queue image-to-image edits for every shot tagged with a hero, so
         an updated hero description propagates across the board. Runs in a
@@ -2638,21 +2723,29 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "job_id": job_id, "count": len(targets),
                     "hero": hero.get("name", hero_id)})
 
+    # GOTCHA: this staticmethod and everything below it MUST stay indented
+    # inside Handler. A past manual edit left a column-0 comment here that
+    # made the region look dedented — if a method actually IS dedented, the
+    # POST_ROUTES table at the bottom of the file fails at import.
     @staticmethod
-    def create_shot_row(data):
-        """Build a new CSV row dict with defaults for all fieldnames."""
-        _, fieldnames = read_csv()
+    def create_shot_row(data, fieldnames):
+        """Build a new CSV row dict with defaults for all fieldnames.
+        Callers pass the fieldnames from their own locked read_csv() so this
+        never reads the CSV outside CSV_LOCK."""
         row = {f: "" for f in fieldnames}
         row.update(data)
         row.setdefault("status", "pending")
         row.setdefault("generation_method", "generate")
         return row
 
-# - generate from hero description -
+    # === GENERATE FROM HERO ===
     def api_generate_from_hero(self, data):
+        # CONTRACT: body = {hero_id, prompt, quality?}. Creates BOTH a new
+        # shots-CSV row (scene_number="ref") AND a stable hero_<id>.png copy
+        # in the reference tree recorded as the hero's thumb_file. The
+        # client loops for multi-generate.
         hero_id = (data.get("hero_id") or "").strip()
         prompt = (data.get("prompt") or "").strip()
-        quality = data.get("quality", "").strip()
         if not hero_id:
             raise ApiError("Missing hero_id")
         if not prompt:
@@ -2661,26 +2754,41 @@ class Handler(BaseHTTPRequestHandler):
         if hero is None:
             raise ApiError("Unknown hero: " + hero_id, 404)
         key = require_openai_key()
-        img_bytes = openai_generate_image(prompt, key, quality if quality in QUALITY_LEVELS else active_quality())
-        scene = "ref"
-        output_file, _ = next_version_name("ref_gen.png", scene)
+        quality = requested_quality(data)
+        img_bytes = openai_generate_image(prompt, key, quality)
+        # Unique output name per render — the old fixed base ("ref_gen.png"
+        # -> always "ref_gen_v2.png") made every hero render overwrite the
+        # previous one and collide with any existing CSV row of that name.
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        base = "%s_hero_%s_%s" % (file_prefix(), _slug(hero_id) or "asset",
+                                  stamp)
         fd = frames_dir()
         os.makedirs(fd, exist_ok=True)
-        out_path = os.path.join(fd, output_file)
-        with open(out_path, "wb") as of:
-            of.write(img_bytes)
-        new_shot = Handler.create_shot_row({
-            "scene_number": scene,
-            "output_file": output_file,
-            "prompt": prompt,
-            "hero_tags": str(hero.get("name", hero_id)),
-            "status": "generated",
-            "generation_method": "generate",
-            "endpoint": "/v1/images/generations",
-            "estimated_cost": QUALITY_COST.get(active_quality(), "$0.04"),
-            "quality": active_quality(),
-            "iteration_count": "1",
-        })
+        with CSV_LOCK:
+            rows, fieldnames = read_csv()
+            taken = {(r.get("output_file") or "").strip() for r in rows}
+            output_file = base + "_v1.png"
+            n = 2
+            while (output_file in taken or
+                   os.path.exists(os.path.join(fd, output_file))):
+                output_file = "%s_%d_v1.png" % (base, n)
+                n += 1
+            with open(os.path.join(fd, output_file), "wb") as of:
+                of.write(img_bytes)
+            new_shot = Handler.create_shot_row({
+                "scene_number": "ref",
+                "output_file": output_file,
+                "prompt": prompt,
+                "hero_tags": str(hero.get("name", hero_id)),
+                "status": "generated",
+                "generation_method": "generate",
+                "endpoint": "/v1/images/generations",
+                "estimated_cost": QUALITY_COST.get(quality, "$0.07"),
+                "quality": quality,
+                "iteration_count": "1",
+            }, fieldnames)
+            rows.append(new_shot)
+            write_csv(rows, fieldnames)
         # Copy the render into the reference tree under the hero's category so
         # it shows up in the References panel, and record it as the hero's
         # thumbnail. A stable per-hero filename means a re-generate overwrites
@@ -2706,7 +2814,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "output_file": output_file, "shot": new_shot,
                     "thumb_file": thumb_file})
 
-    # - reference variations -
+    # === REFERENCE VARIATIONS ===
     def api_ref_variations(self, data):
         ref_file = (data.get("file") or "").strip()
         prompt = (data.get("prompt") or "").strip()
@@ -2730,11 +2838,11 @@ class Handler(BaseHTTPRequestHandler):
             out_path = os.path.join(out_dir, out_name)
             with open(out_path, "wb") as of:
                 of.write(img_bytes)
-            rel = os.path.join(cat, out_name) if cat != "." else out_name
+            rel = (cat + "/" + out_name) if cat not in ("", ".") else out_name
             saved.append(rel)
         self._json({"ok": True, "files": saved, "category": cat, "count": len(saved)})
 
-    # - shotlist endpoints -
+    # === SHOTLIST ENDPOINTS (24-column VFX breakdown) ===
     def api_shotlist_create(self, data):
         with SHOTLIST_LOCK:
             rows = read_shotlist()
@@ -2948,7 +3056,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "mode": mode, "created": created,
                     "updated": updated, "total": len(rows)})
 
-    # - hero asset endpoints -
+    # === HERO ASSET ENDPOINTS ===
     HERO_FIELDS = ("name", "type", "category", "description", "breakdown",
                    "colors", "notes", "ref_image", "thumb_file")
 
@@ -3006,7 +3114,7 @@ class Handler(BaseHTTPRequestHandler):
             save_heroes(heroes)
         self._json({"ok": True, "hero": hero})
 
-    # - project endpoints -
+    # === PROJECT ENDPOINTS ===
     def api_project_create(self, data):
         name = _slug((data.get("name") or "").strip().lower()
                      .replace(" ", "-"))
@@ -3043,6 +3151,9 @@ class Handler(BaseHTTPRequestHandler):
         if field == "model" and value not in IMAGE_MODELS:
             raise ApiError("Unknown model: " + value)
         with PROJECT_LOCK:
+            if not PROJECT.get("name"):
+                raise ApiError("No project loaded — restart or switch to a "
+                               "project first", 500)
             PROJECT[field] = value
             settings = dict(PROJECT)
         save_settings(settings)
@@ -3070,7 +3181,7 @@ Handler.POST_ROUTES = {
     "/api/ref_restore": Handler.api_ref_restore,
     "/api/ref_move": Handler.api_ref_move,
     "/api/ref_edit": Handler.api_ref_edit,
-        "/api/ref_variations": Handler.api_ref_variations,
+    "/api/ref_variations": Handler.api_ref_variations,
     "/api/describe_ref": Handler.api_describe_ref,
     "/api/category_add": Handler.api_category_add,
     "/api/duplicate": Handler.api_duplicate,

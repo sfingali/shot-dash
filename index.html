@@ -240,7 +240,9 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 #genOverlay .txt{color:var(--text);font-size:14px;font-weight:600;text-align:center}
 #genOverlay .bar{width:180px;height:3px;border-radius:2px;background:rgba(255,255,255,.1);overflow:hidden}
 #genOverlay .bar i{display:block;height:100%;width:40%;background:var(--accent);animation:slide 1.2s ease-in-out infinite}
-@keyframes slide{to{transform:translateX(350%)}}
+/* GOTCHA: @keyframes slide is defined ONCE, up in the Viewer section (line
+   ~121). A second definition here previously shadowed it — last one wins in
+   CSS — so edits to the first had no visible effect. Don't re-add it. */
 #genOverlay .sub{color:var(--text-dim);font-size:11px;font-variant-numeric:tabular-nums}
 
 /* ============ Responsive ============ */
@@ -715,6 +717,27 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 </div>
 <script>
 'use strict';
+/* ==========================================================================
+   CUSTODIAN NOTES — read before editing
+   - This file is 6 plain <script> blocks sharing one global scope, executed
+     in order. Functions may be called across blocks; keep definitions above
+     the refreshAll() call in the final block.
+   - GOTCHA: almost every piece of UI is built with single-quoted string
+     concatenation, NOT template literals. A raw newline inside one of these
+     strings is a SyntaxError that silently kills the whole <script> block it
+     lives in (this exact bug once took out the grid + viewer). When pasting
+     HTML into a string, keep it on one line or use ' + ' continuation.
+     After edits, sanity-check with: node --check on each extracted block, or
+     just open DevTools and look for a red SyntaxError on load.
+   - All markup built from data goes through esc()/escA(). Never interpolate
+     raw server strings into innerHTML.
+   - BACKEND CONTRACT: every POST must be Content-Type application/json —
+     the server hard-rejects anything else (CSRF guard). The api() helper
+     below does this; don't fetch() endpoints directly.
+   - Shot identity is output_file. payloadFor() decides whether a request
+     addresses a row by {output_file} or {row_index}; use it, never build
+     row payloads by hand.
+   ========================================================================== */
 /* ============ State ============ */
 const S = {
   shots: [],            // server (CSV) order — never sorted in place
@@ -777,14 +800,20 @@ function shotByKey(key){
 function payloadFor(key){
   const found = shotByKey(key);
   if (!found) return null;
-  // The server resolves output_file to the FIRST matching row, so rows with
-  // a synthetic duplicate key must be addressed by row_index instead.
+  // BACKEND CONTRACT (resolve_row in shot_dash.py): send EITHER
+  // {output_file} or {row_index}, where row_index is an index into raw CSV
+  // order as returned by /api/shots — NOT the sorted grid order. The server
+  // resolves output_file to the FIRST matching row, so rows with a synthetic
+  // duplicate key ('file::3') must be addressed by row_index instead.
   if (found.shot.output_file && key === found.shot.output_file)
     return {output_file: found.shot.output_file};
   return {row_index: found.idx};
 }
 function esc(t){ return String(t == null ? '' : t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function escA(t){ return esc(t).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+/* CONTRACT: hero_tags travels as ONE comma-separated string of hero names
+   or ids ('Ben — Motel, hero_3') in the CSV column, in POST bodies, and in
+   the tag-chip inputs. Never send an array. */
 function splitTags(v){ return String(v || '').split(',').map(t => t.trim()).filter(Boolean); }
 function heroById(id){ return S.heroes.find(h => h.id === id) || null; }
 function heroLabel(tag){
@@ -800,6 +829,10 @@ function taggedShotsFor(hero){
 }
 
 /* ============ API helper ============ */
+/* GET when body is undefined; JSON POST otherwise. The Content-Type header
+   is mandatory — the backend 415s any POST without application/json. Paths
+   are relative ('api/shots'), which resolves correctly because the app is
+   always served from '/'. */
 async function api(path, body){
   const opts = body !== undefined
     ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}
@@ -963,6 +996,8 @@ function fillQualitySelects(){
   updateRefGenCost();
   updateEditCost();
   updateRefEditCost();
+  updateHeroGenCost();
+  updateRefVarCost();
 }
 function updateEditCost(){
   const q = $('editQuality').value || S.settings.quality || 'medium';
@@ -987,6 +1022,22 @@ function updateRefEditCost(){
   const count = Math.min(9, Math.max(1, parseInt($('refEditCount').value, 10) || 1));
   const per = parseFloat((qualityCost(q) || '').replace('$', '')) || 0;
   $('refEditCost').textContent = per
+    ? 'Estimated cost: ' + qualityCost(q) + ' × ' + count + ' ≈ $' + (per * count).toFixed(2)
+    : '';
+}
+function updateHeroGenCost(){
+  const q = $('heroGenQuality').value || S.settings.quality || 'medium';
+  const count = Math.min(9, Math.max(1, parseInt($('heroGenCount').value, 10) || 1));
+  const per = parseFloat((qualityCost(q) || '').replace('$', '')) || 0;
+  $('heroGenCost').textContent = per
+    ? 'Estimated cost: ' + qualityCost(q) + ' × ' + count + ' ≈ $' + (per * count).toFixed(2)
+    : '';
+}
+function updateRefVarCost(){
+  const q = $('refVarQuality').value || S.settings.quality || 'medium';
+  const count = Math.min(9, Math.max(1, parseInt($('refVarCount').value, 10) || 1));
+  const per = parseFloat((qualityCost(q) || '').replace('$', '')) || 0;
+  $('refVarCost').textContent = per
     ? 'Estimated cost: ' + qualityCost(q) + ' × ' + count + ' ≈ $' + (per * count).toFixed(2)
     : '';
 }
@@ -1211,9 +1262,14 @@ function renderGrid(){
     $('grid').innerHTML = '';
     const e = $('gridEmpty');
     e.style.display = 'block';
+    // GOTCHA: these are single-quoted strings — a raw newline here is a
+    // SyntaxError that kills this entire <script> block (it happened: a
+    // pasted genAllBtn button once split this string across two lines and
+    // took the whole grid down). One line per string, or concatenate.
+    // Also: never duplicate element ids here — the toolbar already owns
+    // id="genAllBtn".
     e.innerHTML = active === 0
-      ? '<div class="big">No storyboards yet</div>Create the first one to start the board.<br><br><button class="btn btn-accent" data-act="newShot">+ New storyboard</button>
-      <button class="btn btn-accent" data-act="genAll" id="genAllBtn">⚡ Generate All</button>'
+      ? '<div class="big">No storyboards yet</div>Create the first one to start the board.<br><br><button class="btn btn-accent" data-act="newShot">+ New storyboard</button>'
       : '<div class="big">No storyboards match</div>Nothing matches the current filter.<br><br><button class="btn" data-act="clearFilters">Clear filters</button>';
     $('count').textContent = '';
     return;
@@ -1366,6 +1422,8 @@ $('viewerInfo').addEventListener('click', e => {
 
 /* ============ Version history ============ */
 function renderVersionStrip(s){
+  // CONTRACT: version_history is a JSON-encoded array stored as a string in
+  // the CSV — always JSON.parse, never split(',').
   let hist = [];
   try { hist = JSON.parse(s.version_history || '[]'); } catch (e) {}
   if (hist.length) {
@@ -1435,16 +1493,9 @@ async function generateShot(){
     toast('Generated ' + d.output_file + ' (v' + d.version + ', ' + d.size_kb + ' KB)');
     await refreshData();
   } catch (e){
-    const msg = (e.message || '').toLowerCase();
+    // Nothing to restore here — generate has no modal; the prompt lives on
+    // the shot row itself, so a failed render loses nothing.
     toast(e.message, {error: true});
-    // If OpenAI rejected the edit (safety/content filter), re-open the modal
-    // with the prompt preserved so the user can tweak it instead of losing it
-    if (msg.includes('safety') || msg.includes('content') || msg.includes('rejected') || msg.includes('blocked')) {
-      showEditPrompt();
-      $('editInstr').value = instr;
-      $('editHeroes').value = heroTags || '';
-      $('editCount').value = String(editCount);
-    }
   } finally { end(); }
 }
 function showEditPrompt(){
@@ -1591,7 +1642,10 @@ async function createShot(){
     for (let g = 0; g < gens; g++){
       const fn = g === 0 ? fname : fname.replace(/(_v\d+)?(\.[^.]+)$/, '') + '_alt' + (g + 1) + '_v1.png';
       const body = {scene_number: sc, output_file: fn, lens, verbatim_instructions: instr, status, hero_tags: heroTags};
-      if (S.selectedKey) body.after_file = S.selectedKey;
+      // Synthetic duplicate keys ('file::3') don't match any output_file on
+      // the server — always resolve through the shot itself.
+      const selFound = S.selectedKey && shotByKey(S.selectedKey);
+      if (selFound && selFound.shot.output_file) body.after_file = selFound.shot.output_file;
       const d = await api('api/create', body);
       if (!firstFile) firstFile = d.row && d.row.output_file;
     }
@@ -1738,7 +1792,7 @@ function refCard(fn, opts){
   // the fixed-dimension .thumb until the IntersectionObserver hydrates it
   const media = opts.lazy
     ? '<div class="ph"></div>'
-    : '<img loading="lazy" src="api/thumb/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '" loading="lazy">';
+    : '<img loading="lazy" src="api/thumb/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '">';
   return '<div class="card"><div class="thumb"' + (opts.lazy ? ' data-lazy="' + escA(fn) + '"' : '') + '>' +
     media +
     '<div class="acts">' + acts + '</div></div>' +
@@ -1904,10 +1958,17 @@ $('refsGrid').addEventListener('click', async e => {
     }
   } catch (err){ toast(err.message, {error: true}); }
 });
+/* Default category path from the active References tab/sub-tab. */
+function currentRefCategory(){
+  const root = S.refTab === 'props' ? 'hero_props' : S.refTab;
+  if (S.refSub && S.refSub !== REF_SUB_ALL && S.refSub !== '(unsorted)')
+    return root + '/' + S.refSub;
+  return root;
+}
 function showRefGenerate(){
   $('refGenErr').classList.remove('on');
   $('refGenInstr').classList.remove('invalid');
-  if (S.refSelCat && !$('refGenCat').value) $('refGenCat').value = S.refSelCat;
+  if (!$('refGenCat').value) $('refGenCat').value = currentRefCategory();
   updateRefGenCost();
   openModal('refGenModal');
   $('refGenInstr').focus();
@@ -1946,13 +2007,13 @@ async function genVariations(){
   } catch (e){
     const msg = (e.message || '').toLowerCase();
     toast(e.message, {error: true});
-    // If OpenAI rejected the edit (safety/content filter), re-open the modal
-    // with the prompt preserved so the user can tweak it instead of losing it
+    // If OpenAI rejected the prompt (safety/content filter), re-open THIS
+    // modal with its values preserved so the user can tweak instead of retyping
     if (msg.includes('safety') || msg.includes('content') || msg.includes('rejected') || msg.includes('blocked')) {
-      showEditPrompt();
-      $('editInstr').value = instr;
-      $('editHeroes').value = heroTags || '';
-      $('editCount').value = String(editCount);
+      showRefVariations(fn);
+      $('refVarPrompt').value = prompt;
+      $('refVarCount').value = String(count);
+      if (quality) $('refVarQuality').value = quality;
     }
   } finally { end(); }
 }
@@ -1988,13 +2049,13 @@ async function editRef(){
   } catch (e){
     const msg = (e.message || '').toLowerCase();
     toast(e.message, {error: true});
-    // If OpenAI rejected the edit (safety/content filter), re-open the modal
-    // with the prompt preserved so the user can tweak it instead of losing it
+    // If OpenAI rejected the edit (safety/content filter), re-open THIS
+    // modal with its values preserved so the user can tweak instead of retyping
     if (msg.includes('safety') || msg.includes('content') || msg.includes('rejected') || msg.includes('blocked')) {
-      showEditPrompt();
-      $('editInstr').value = instr;
-      $('editHeroes').value = heroTags || '';
-      $('editCount').value = String(editCount);
+      showRefEdit(fn);
+      $('refEditInstr').value = instr;
+      $('refEditCount').value = String(count);
+      if (quality) $('refEditQuality').value = quality;
     }
   } finally { end(); }
 }
@@ -2020,25 +2081,28 @@ async function generateRef(){
   } catch (e){
     const msg = (e.message || '').toLowerCase();
     toast(e.message, {error: true});
-    // If OpenAI rejected the edit (safety/content filter), re-open the modal
-    // with the prompt preserved so the user can tweak it instead of losing it
+    // If OpenAI rejected the prompt (safety/content filter), re-open THIS
+    // modal with its values preserved so the user can tweak instead of retyping
     if (msg.includes('safety') || msg.includes('content') || msg.includes('rejected') || msg.includes('blocked')) {
-      showEditPrompt();
-      $('editInstr').value = instr;
-      $('editHeroes').value = heroTags || '';
-      $('editCount').value = String(editCount);
+      showRefGenerate();
+      $('refGenCat').value = cat;
+      $('refGenInstr').value = instr;
+      $('refGenCount').value = String(count);
+      if (quality) $('refGenQuality').value = quality;
     }
   } finally { end(); }
 }
 async function addCategory(){
-  const cat = prompt('New category path (use / for sub-categories, e.g. locations/motel):', S.refSelCat ? S.refSelCat + '/' : '');
+  const cat = prompt('New category path (use / for sub-categories, e.g. locations/motel):', currentRefCategory() + '/');
   if (!cat || !cat.trim()) return;
   try {
     const d = await api('api/category_add', {category: cat.trim()});
     toast('Category added: ' + d.category);
     await fetchRefs();
-    S.refSelCat = d.category;
-    if (d.category.includes('/')) S.treeOpen.add(d.category.split('/')[0]);
+    // Jump to the tab that now contains it
+    const root = d.category.split('/')[0];
+    S.refTab = (root === 'characters' || root === 'locations') ? root : 'props';
+    S.refSub = '';
     renderRefs();
   } catch (e){ toast(e.message, {error: true}); }
 }
@@ -2208,12 +2272,17 @@ function descField(h, field){
 const DESC_CATS = [['characters','Characters'],['locations','Locations'],['hero_props','Props']];
 function renderDescPanel(){
   const all = S.heroes.filter(h => !h.archived);
-  const heroes = all.filter(h => h.category === S.descCat);
+  // 'hero_props' is the catch-all — heroes with a blank, vehicle or other
+  // category land there instead of being invisible in every tab.
+  const inCat = (h, cat) => cat === 'hero_props'
+    ? (h.category !== 'characters' && h.category !== 'locations')
+    : h.category === cat;
+  const heroes = all.filter(h => inCat(h, S.descCat));
   let html = '<div class="ref-cat"><h3>Descriptions<span class="n">' + heroes.length + '</span></h3>' +
     '<div class="tabs" style="margin-bottom:var(--s3)">' +
     DESC_CATS.map(([cat, label]) =>
       '<button class="tab' + (S.descCat === cat ? ' active' : '') + '" data-desccat="' + escA(cat) + '">' +
-      esc(label) + ' <span class="n">' + (all.filter(h => h.category === cat).length || '') + '</span></button>').join('') +
+      esc(label) + ' <span class="n">' + (all.filter(h => inCat(h, cat)).length || '') + '</span></button>').join('') +
     '</div>' +
     '<div style="margin-bottom:var(--s3);display:flex;gap:var(--s2);align-items:center">' +
     '<button class="btn btn-accent" data-act="heroNew">+ New hero asset</button>' +
@@ -2483,6 +2552,9 @@ function startCellEdit(td){
     if (v === cur){ restore(cur); return; }
     restore(v); // optimistic; fetchShotlist re-renders with server truth
     try {
+      // BACKEND CONTRACT: row_index indexes the Order-SORTED list (the same
+      // order GET /api/shotlist returns); Order rides along as a staleness
+      // check — a 409 here means the shotlist changed on disk, so refetch.
       await api('api/shotlist_update', {row_index: rowIdx, Order: order, field: col, value: v});
       backupSaved();
       await fetchShotlist();
@@ -2807,25 +2879,30 @@ const ACTIONS = {
     toast('Generated: ' + ok + ' ok' + (fail ? ', ' + fail + ' failed' : ''));
     refreshData();
   },
-genFromHero: async () => {
+  genFromHero: async () => {
     const prompt = $('heroGenPrompt').value.trim();
-    if (!prompt) return toast("Enter a prompt", {error:true});
+    if (!prompt) return toast('Enter a prompt', {error: true});
     const hero = heroById(heroGenTargetId);
     if (!hero) return;
-    const quality = $('heroGenQuality','refVarQuality').value;
+    const quality = $('heroGenQuality').value;   // '' = project default
     const count = Math.min(9, Math.max(1, parseInt($('heroGenCount').value, 10) || 1));
-    closeModal("heroGenModal");
-    const end = startJob("Generating " + count + " storyboard" + (count===1?"":"s") + " from " + hero.name);
+    closeModal('heroGenModal');
+    const end = startJob('Generating ' + count + ' storyboard' + (count === 1 ? '' : 's') + ' from ' + hero.name);
     try {
-        for (let g = 0; g < count; g++) {
-            const d = await api("api/generate_from_hero", {hero_id: hero.id, prompt, quality});
-            if (g === 0) toast("Generated: " + d.output_file);
-        }
-        await refreshData();
-    } catch(e) { toast(e.message, {error:true}); }
+      let files = [];
+      for (let g = 0; g < count; g++) {
+        const body = {hero_id: hero.id, prompt};
+        if (quality) body.quality = quality;
+        const d = await api('api/generate_from_hero', body);
+        if (d.output_file) files.push(d.output_file);
+      }
+      toast('Generated ' + files.length + ' storyboard' + (files.length === 1 ? '' : 's') + (files[0] ? ' — ' + files[0] : ''));
+      await refreshData();
+      if (files[0]) selectShot(files[0]);
+    } catch (e){ toast(e.message, {error: true}); }
     finally { end(); }
-},
-confirmYes: () => settleConfirm(true),
+  },
+  confirmYes: () => settleConfirm(true),
   confirmNo: () => settleConfirm(false),
 };
 document.addEventListener('click', e => {
@@ -2855,6 +2932,10 @@ $('editQuality').addEventListener('change', updateEditCost);
 $('refGenCount').addEventListener('input', updateRefGenCost);
 $('refEditQuality').addEventListener('change', updateRefEditCost);
 $('refEditCount').addEventListener('input', updateRefEditCost);
+$('heroGenQuality').addEventListener('change', updateHeroGenCost);
+$('heroGenCount').addEventListener('input', updateHeroGenCost);
+$('refVarQuality').addEventListener('change', updateRefVarCost);
+$('refVarCount').addEventListener('input', updateRefVarCost);
 function onExportChange(e){
   const v = e.target.value;
   if (!v) return;
