@@ -1645,6 +1645,7 @@ $('refsGrid').addEventListener('click', async e => {
   const hedit = e.target.closest('[data-hedit]');
   const hdel = e.target.closest('[data-hdel]');
   const hregen = e.target.closest('[data-hregen]');
+  const hgen = e.target.closest('[data-hgen]');
   const hrestore = e.target.closest('[data-hrestore]');
   try {
     if (del){
@@ -1685,6 +1686,8 @@ $('refsGrid').addEventListener('click', async e => {
       restoreHero(hrestore.getAttribute('data-hrestore'));
     } else if (hregen){
       massRegen(hregen.getAttribute('data-hregen'));
+    } else if (hgen){
+      generateFromHero(hgen.getAttribute('data-hgen'));
     } else if (view){
       const fn = view.getAttribute('data-view');
       openImageModal('api/ref/' + encodeURIComponent(fn), fn);
@@ -1905,6 +1908,16 @@ async function massRegen(id){
     trackJob(d.job_id, 'Mass replace: ' + (d.hero || id));
   } catch (e){ toast(e.message, {error: true}); }
 }
+let heroGenTargetId = null;
+function generateFromHero(id){
+  const h = heroById(id);
+  if (!h) return toast('Hero not found', {error: true});
+  heroGenTargetId = id;
+  $('heroGenLabel').textContent = 'Hero: ' + h.name;
+  $('heroGenPrompt').value = h.name + ': ' + (h.description || '');
+  openModal('heroGenModal');
+  $('heroGenPrompt').focus();
+}
 
 /* ============ Descriptions panel (textual hero-asset fields) ============ */
 const DESC_FIELDS = ['name','type','description','breakdown','colors','notes'];
@@ -1927,7 +1940,6 @@ function renderDescPanel(){
     '</div>' +
     '<div style="margin-bottom:var(--s3);display:flex;gap:var(--s2);align-items:center">' +
     '<button class="btn btn-accent" data-act="heroNew">+ New hero asset</button>' +
-    '<button class="btn" data-act="genFromHeroDesc">&#127916; Generate</button>' +
     '<span class="count">Canonical text descriptions injected into storyboard prompts. Click any field to edit — saves on blur, Esc cancels.</span>' +
     '</div>';
   if (!heroes.length){
@@ -1942,6 +1954,10 @@ function renderDescPanel(){
     '<div class="d-head"><span class="h-name">' + esc(h.name) + '</span>' +
     '<span class="h-type">' + esc(h.type || 'asset') + ' · ' + esc(h.id) + '</span></div>' +
     DESC_FIELDS.map(f => descField(h, f)).join('') +
+    '<div style="display:flex;gap:var(--s2);margin-top:var(--s2)">' +
+    '<button class="btn" style="font-size:10px;padding:2px 8px" data-hregen="' + escA(h.id) + '">&#128260; Mass Replace</button>' +
+    '<button class="btn" style="font-size:10px;padding:2px 8px" data-hgen="' + escA(h.id) + '">&#127916; Generate</button>' +
+    '</div>' +
     '</div>').join('');
   html += '</div>';
   $('refsGrid').innerHTML = html;
@@ -2476,22 +2492,10 @@ const ACTIONS = {
     $('projName').focus();
   },
   createProject,
-  genFromHeroDesc: () => {
-    const cat = S.descCat;
-    const heroes = S.heroes.filter(h => !h.archived && h.category === cat);
-    if (!heroes.length) return toast("No hero assets in this category", {error:true});
-    // Combine all descriptions as prompt
-    const prompt = heroes.map(h => h.name + ": " + (h.description || "")).join("\n\n");
-    $('heroGenLabel').textContent = "Hero: " + heroes.map(h=>h.name).join(", ");
-    $('heroGenPrompt').value = prompt;
-    openModal("heroGenModal");
-    $('heroGenPrompt').focus();
-},
 genFromHero: async () => {
     const prompt = $('heroGenPrompt').value.trim();
     if (!prompt) return toast("Enter a prompt", {error:true});
-    const cat = S.descCat;
-    const hero = S.heroes.find(h => !h.archived && h.category === cat);
+    const hero = heroById(heroGenTargetId);
     if (!hero) return;
     const quality = $('heroGenQuality').value;
     closeModal("heroGenModal");
