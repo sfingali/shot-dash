@@ -2171,6 +2171,35 @@ class Handler(BaseHTTPRequestHandler):
                         n += 1
                     new_row["output_file"] = "%s_%d%s" % (base, n, ext)
             autofill_shot(new_row)
+            # Build curated description on creation so the user can see/edit it before generating
+            curated = (new_row.get("curated_description") or "").strip()
+            if not curated:
+                curated = (new_row.get("verbatim_instructions") or "").strip()
+            if curated:
+                # Build the full prompt from curated + lens + heroes + location + house style
+                lens = (new_row.get("lens") or "28mm").strip()
+                loc = (new_row.get("location") or "").strip()
+                parts = [curated]
+                if lens:
+                    parts.append("Shot with " + lens + " lens")
+                if loc:
+                    parts.append(loc)
+                heroes = load_heroes()
+                tags = (new_row.get("hero_tags") or "").strip()
+                if tags:
+                    for h in heroes:
+                        if not h.get("archived"):
+                            for tag in [t.strip() for t in tags.split(",") if t.strip()]:
+                                if h["name"] == tag or h["id"] == tag:
+                                    desc = (h.get("description") or "").strip()
+                                    if desc:
+                                        parts.append("Keep this element exactly consistent — " + desc)
+                                    break
+                parts.append("Desaturated palette, cool shadows")
+                parts.append("Photorealistic cinematic still from an indie horror film")
+                ratio = (new_row.get("aspect_ratio") or "2.39:1").strip()
+                parts.append("Scope " + ratio + ". No text, no watermark, no logos.")
+                new_row["curated_description"] = ". ".join(parts)
             # Insert after a specific row if after_file is provided
             after_file = (data.get("after_file") or "").strip()
             pos = len(rows)
