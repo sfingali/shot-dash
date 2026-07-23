@@ -2638,14 +2638,15 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "job_id": job_id, "count": len(targets),
                     "hero": hero.get("name", hero_id)})
 
-def create_shot_row(data):
-    """Build a new CSV row dict with defaults for all fieldnames."""
-    _, fieldnames = read_csv()
-    row = {f: "" for f in fieldnames}
-    row.update(data)
-    row.setdefault("status", "pending")
-    row.setdefault("generation_method", "generate")
-    return row
+    @staticmethod
+    def create_shot_row(data):
+        """Build a new CSV row dict with defaults for all fieldnames."""
+        _, fieldnames = read_csv()
+        row = {f: "" for f in fieldnames}
+        row.update(data)
+        row.setdefault("status", "pending")
+        row.setdefault("generation_method", "generate")
+        return row
 
 # - generate from hero description -
     def api_generate_from_hero(self, data):
@@ -2668,7 +2669,7 @@ def create_shot_row(data):
         out_path = os.path.join(fd, output_file)
         with open(out_path, "wb") as of:
             of.write(img_bytes)
-        new_shot = create_shot_row({
+        new_shot = Handler.create_shot_row({
             "scene_number": scene,
             "output_file": output_file,
             "prompt": prompt,
