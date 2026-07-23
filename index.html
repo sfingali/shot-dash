@@ -1084,7 +1084,7 @@ function renderGrid(){
   S.displayedKeys = list.map(x => x.key);
   const active = S.shots.filter(s => s.status !== 'archived').length;
 
-  $('thead').innerHTML = '<tr>' + SHOT_COLS.map(c =>
+  $('thead').innerHTML = '<tr><th style="width:44px"></th><th style="width:28px"></th>' + SHOT_COLS.map(c =>
     '<th data-sort="' + c + '">' + (COL_LABELS[c] || c) +
     (S.sortCol === c ? (S.sortDir > 0 ? ' ▴' : ' ▾') : '') + '</th>').join('') + '</tr>';
 
