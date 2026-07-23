@@ -195,6 +195,11 @@ details.bin summary:hover{color:var(--text)}
 .modal-foot{display:flex;gap:var(--s2);justify-content:flex-end;margin-top:var(--s4)}
 .modal-full-img{max-width:95vw;max-height:95vh;border-radius:var(--r1)}
 .img-nav-hint{position:absolute;bottom:var(--s3);left:50%;transform:translateX(-50%);font-size:11px;color:var(--text-dim);background:rgba(11,12,14,.7);padding:2px 10px;border-radius:9px;pointer-events:none}
+.img-act-bar{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);display:none;gap:var(--s2);background:rgba(11,12,14,.75);border:1px solid var(--border-strong);border-radius:var(--r2);padding:var(--s2) var(--s3)}
+.img-act-bar.on{display:flex}
+.img-act-bar button{padding:3px 10px;font-size:12px;background:rgba(11,12,14,.85);border:1px solid var(--border-strong);border-radius:var(--r1);cursor:pointer;color:var(--text)}
+.img-act-bar button:hover{border-color:var(--accent);color:var(--accent)}
+.img-act-bar button.del:hover{border-color:var(--red);color:var(--red)}
 .kbd-list{display:grid;grid-template-columns:auto 1fr;gap:var(--s2) var(--s4);font-size:12px}
 kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1px solid var(--border-strong);border-bottom-width:2px;border-radius:var(--r1);padding:1px 6px;color:var(--text)}
 
@@ -591,6 +596,13 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 <div class="modal" id="imageModal">
   <img class="modal-full-img" id="fullImg" alt="">
   <div class="img-nav-hint" id="imgNavHint" style="display:none">&larr; &rarr; to navigate</div>
+  <div class="img-act-bar" id="imgActBar">
+    <button data-imgact="edit" title="Image-to-image edit">✎ Edit</button>
+    <button data-imgact="move" title="Move to another category">→ Move</button>
+    <button data-imgact="arch" title="Archive">⬇ Archive</button>
+    <button class="del" data-imgact="bin" title="Move to bin">× Bin</button>
+    <button data-imgact="restore" title="Restore">↩ Restore</button>
+  </div>
 </div>
 
 <div id="toasts"></div>
@@ -1983,7 +1995,8 @@ $('archiveGrid').addEventListener('click', async e => {
     if (viewFrame){
       openImageModal(viewFrame.getAttribute('data-view-frame'));
     } else if (view){
-      openImageModal('/api/ref/' + encodeURIComponent(view.getAttribute('data-view')));
+      const fn = view.getAttribute('data-view');
+      openImageModal('/api/ref/' + encodeURIComponent(fn), fn);
     } else if (refRes){
       await api('/api/ref_restore', {file: refRes.getAttribute('data-refrestore')});
       toast('Reference restored');
@@ -2012,6 +2025,7 @@ $('fullImg').addEventListener('click', () => closeModal('imageModal'));
    refNavList holds the ref files visible under the current category/filter
    (same order as renderRefs); null when the open image isn't navigable. */
 let refNavList = null, refNavIdx = -1;
+let imgModalFile = null, imgBarTimer = null;
 function visibleRefFiles(){
   const q = ($('refSearch').value || '').toLowerCase();
   const sel = S.refSelCat;
@@ -2030,14 +2044,75 @@ function openImageModal(src, refFile){
   const canNav = !!(refNavList && refNavIdx >= 0 && refNavList.length > 1);
   if (!canNav){ refNavList = null; refNavIdx = -1; }
   $('imgNavHint').style.display = canNav ? '' : 'none';
+  imgModalFile = refFile || null;
+  clearTimeout(imgBarTimer);
+  $('imgActBar').classList.remove('on');
   $('fullImg').src = src;
   $('imageModal').classList.add('open');
 }
 function refNav(dir){
   if (!refNavList) return;
   refNavIdx = (refNavIdx + dir + refNavList.length) % refNavList.length;   // wraps
-  $('fullImg').src = '/api/ref/' + encodeURIComponent(refNavList[refNavIdx]);
+  imgModalFile = refNavList[refNavIdx];
+  $('fullImg').src = '/api/ref/' + encodeURIComponent(imgModalFile);
 }
+
+/* Viewer action bar — same actions as the thumbnail cards. Shown on hover
+   over the full-size image, hidden 1s after the mouse leaves. */
+function showImgBar(){
+  if (!imgModalFile) return;
+  clearTimeout(imgBarTimer);
+  const inactive = S.binRefs.includes(imgModalFile) || S.archRefs.includes(imgModalFile);
+  const bar = $('imgActBar');
+  bar.querySelectorAll('[data-imgact]').forEach(b => {
+    const restore = b.getAttribute('data-imgact') === 'restore';
+    b.style.display = (inactive ? restore : !restore) ? '' : 'none';
+  });
+  bar.classList.add('on');
+}
+function hideImgBarSoon(){
+  clearTimeout(imgBarTimer);
+  imgBarTimer = setTimeout(() => $('imgActBar').classList.remove('on'), 1000);
+}
+['fullImg','imgActBar'].forEach(id => {
+  $(id).addEventListener('mouseenter', showImgBar);
+  $(id).addEventListener('mouseleave', hideImgBarSoon);
+});
+$('imgActBar').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-imgact]');
+  if (!btn || !imgModalFile) return;
+  const fn = imgModalFile;
+  const act = btn.getAttribute('data-imgact');
+  try {
+    if (act === 'edit'){
+      closeModal('imageModal');
+      showRefEdit(fn);
+    } else if (act === 'move'){
+      const cat = prompt('Move ' + fn.split('/').pop() + ' to category:', fn.includes('/') ? fn.split('/').slice(0, -1).join('/') : '');
+      if (!cat) return;
+      await api('/api/ref_move', {file: fn, category: cat.trim()});
+      closeModal('imageModal');
+      toast('Moved to ' + cat.trim());
+      fetchRefs();
+    } else if (act === 'arch'){
+      await api('/api/ref_archive', {file: fn});
+      closeModal('imageModal');
+      toast('Reference archived');
+      fetchRefs();
+    } else if (act === 'bin'){
+      closeModal('imageModal');   // confirm dialog would render underneath the image modal
+      if (!await confirmDlg('Move ' + fn.split('/').pop() + ' to the bin? The file stays on disk and can be restored anytime.', 'Bin it')) return;
+      await api('/api/ref_bin', {file: fn});
+      toast('Moved to bin');
+      fetchRefs();
+    } else if (act === 'restore'){
+      await api('/api/ref_restore', {file: fn});
+      closeModal('imageModal');
+      toast('Reference restored');
+      fetchRefs();
+    }
+  } catch (err){ toast(err.message, {error: true}); }
+});
 
 /* Confirmation dialog (promise-based, replaces window.confirm) */
 let confirmResolve = null;
