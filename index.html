@@ -154,6 +154,7 @@ td.sl-sel .btn:hover{color:var(--red)}
 .card{display:flex;flex-direction:column;gap:var(--s1);width:168px}
 .card .thumb{position:relative;width:168px;height:94px;border:1px solid var(--border);border-radius:var(--r1);overflow:hidden;background:#000}
 .card .thumb img{width:100%;height:100%;object-fit:cover;cursor:pointer;transition:transform .15s}
+.card .thumb .ph{width:100%;height:100%}
 .card .thumb:hover img{transform:scale(1.04)}
 .card .thumb .acts{position:absolute;top:4px;right:4px;display:none;gap:4px}
 .card .thumb:hover .acts{display:flex}
@@ -631,7 +632,7 @@ const S = {
   sortDir: 1,
   busyKeys: new Set(),  // shots with a generate/edit in flight
   fieldEdit: null,      // {key, field}
-  refSelCat: '',        // '' = all
+  refSelCat: 'uncategorized', // '' = all
   treeOpen: new Set(),  // expanded tree roots
   refView: 'refs',      // 'refs' | 'heroes'
   refEditFile: null,
@@ -949,7 +950,7 @@ function updateBadges(){
 async function switchProject(name){
   try {
     await api('/api/project_switch', {name});
-    S.selectedKey = null; S.refSelCat = ''; S.refView = 'refs'; S.treeOpen.clear();
+    S.selectedKey = null; S.refSelCat = 'uncategorized'; S.refView = 'refs'; S.treeOpen.clear();
     clearViewer();
     await refreshAll();
     toast('Switched to ' + name);
@@ -966,7 +967,7 @@ async function createProject(){
     const d = await api('/api/project_create', {name});
     closeModal('projectModal');
     $('projName').value = '';
-    S.selectedKey = null; S.refSelCat = ''; S.refView = 'refs'; S.treeOpen.clear();
+    S.selectedKey = null; S.refSelCat = 'uncategorized'; S.refView = 'refs'; S.treeOpen.clear();
     clearViewer();
     await refreshAll();
     toast('Project created: ' + d.name);
@@ -1392,9 +1393,10 @@ function refCatCounts(){
 function renderRefTree(){
   const counts = refCatCounts();
   const all = [...new Set([...S.categories, ...Object.keys(S.refCats)])].sort();
-  // parents come from canonical roots, flat categories, and the left part of any 'a/b' path
+  // parents come from canonical roots, flat categories, and the left part of any 'a/b' path;
+  // 'uncategorized' is always shown — it's the default selection
   const derived = all.filter(c => c.includes('/')).map(c => c.split('/')[0]);
-  const roots = [...new Set([...all.filter(c => !c.includes('/')), ...derived])];
+  const roots = [...new Set([...all.filter(c => !c.includes('/')), ...derived, 'uncategorized'])];
   // stable order: canonical roots first, then any extras alphabetically
   const ordered = [...S.catRoots, ...roots.filter(r => !S.catRoots.includes(r)).sort()];
   const total = Object.values(counts).reduce((a, n) => a + n, 0);
@@ -1447,8 +1449,13 @@ function refCard(fn, opts){
       '<button data-arch="' + escA(fn) + '" title="Archive">⬇</button>' +
       '<button class="del" data-del="' + escA(fn) + '" title="Move to bin">×</button>';
   }
-  return '<div class="card"><div class="thumb">' +
-    '<img src="/api/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '" loading="lazy">' +
+  // lazy cards defer <img> creation entirely — a same-size placeholder sits in
+  // the fixed-dimension .thumb until the IntersectionObserver hydrates it
+  const media = opts.lazy
+    ? '<div class="ph"></div>'
+    : '<img src="/api/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '" loading="lazy">';
+  return '<div class="card"><div class="thumb"' + (opts.lazy ? ' data-lazy="' + escA(fn) + '"' : '') + '>' +
+    media +
     '<div class="acts">' + acts + '</div></div>' +
     '<div class="name">' + esc(label) + '</div>' +
     (opts.showCat !== false ? '<div class="cat">' + esc(cat || 'uncategorized') + '</div>' : '') +
@@ -1456,19 +1463,23 @@ function refCard(fn, opts){
 }
 function renderRefs(){
   renderRefTree();
+  refLazyReset();
   $('heroBtn').classList.toggle('btn-accent', S.refView === 'heroes');
   if (S.refView === 'heroes'){ renderHeroPanel(); return; }
   const q = ($('refSearch').value || '').toLowerCase();
   const sel = S.refSelCat;
   const cats = Object.keys(S.refCats).sort();
-  let html = '', total = 0;
+  let html = '', total = 0, eager = 0;
+  // Only the first batch gets real <img> tags; the rest are placeholders
+  // hydrated by refLazyIO as they scroll into view.
+  const card = (fn, opts) => refCard(fn, Object.assign({lazy: eager++ >= REF_LAZY_BATCH}, opts));
   for (const cat of cats){
     if (sel && cat !== sel && !cat.startsWith(sel + '/')) continue;
     const imgs = (S.refCats[cat] || []).filter(f => !q || f.toLowerCase().includes(q));
     if (!imgs.length) continue;
     total += imgs.length;
     html += '<div class="ref-cat"><h3>' + esc(cat) + '<span class="n">' + imgs.length + '</span></h3><div class="card-row">' +
-      imgs.map(fn => refCard(fn, {showCat: false})).join('') + '</div></div>';
+      imgs.map(fn => card(fn, {showCat: false})).join('') + '</div></div>';
   }
   if (!html){
     html = '<div class="empty-state"><div class="big">' + (q || sel ? 'No references match' : 'No references yet') + '</div>' +
@@ -1480,10 +1491,48 @@ function renderRefs(){
   if (bins.length){
     html += '<details class="bin"><summary>Bin — ' + bins.length + ' reference' + (bins.length === 1 ? '' : 's') +
       ' (kept on disk, never deleted)</summary><div class="card-row">' +
-      bins.map(fn => refCard(fn, {mode: 'bin'})).join('') + '</div></details>';
+      bins.map(fn => card(fn, {mode: 'bin'})).join('') + '</div></details>';
   }
   $('refsGrid').innerHTML = html;
   $('refCount2').textContent = total ? total + ' reference' + (total === 1 ? '' : 's') : '';
+  refLazyObserve();
+}
+
+/* ============ References: lazy image hydration ============ */
+const REF_LAZY_BATCH = 12;
+let refLazyIO = null, refLazyQueue = [];
+function refLazyReset(){
+  if (refLazyIO){ refLazyIO.disconnect(); refLazyIO = null; }
+  refLazyQueue = [];
+}
+function refLazyHydrate(thumb){
+  const fn = thumb.getAttribute('data-lazy');
+  if (!fn) return;
+  thumb.removeAttribute('data-lazy');
+  const img = document.createElement('img');
+  img.src = '/api/ref/' + encodeURIComponent(fn);
+  img.title = fn;
+  img.setAttribute('data-view', fn);
+  img.loading = 'lazy';
+  const ph = thumb.querySelector('.ph');
+  if (ph) thumb.replaceChild(img, ph); else thumb.prepend(img);
+}
+function refLazyObserve(){
+  refLazyQueue = [...$('refsGrid').querySelectorAll('.thumb[data-lazy]')];
+  if (!refLazyQueue.length) return;
+  refLazyIO = new IntersectionObserver(entries => {
+    if (!refLazyIO) return;
+    // hydrate in order up to the deepest visible placeholder, in whole batches
+    let deepest = -1;
+    for (const en of entries){
+      if (en.isIntersecting) deepest = Math.max(deepest, refLazyQueue.indexOf(en.target));
+    }
+    if (deepest < 0) return;
+    const n = Math.ceil(Math.max(REF_LAZY_BATCH, deepest + 1) / REF_LAZY_BATCH) * REF_LAZY_BATCH;
+    refLazyQueue.splice(0, n).forEach(t => { refLazyIO.unobserve(t); refLazyHydrate(t); });
+    if (!refLazyQueue.length) refLazyReset();
+  }, {root: $('refsGrid'), rootMargin: '200px'});
+  refLazyQueue.forEach(t => refLazyIO.observe(t));
 }
 $('refsGrid').addEventListener('click', async e => {
   const del = e.target.closest('[data-del]');
