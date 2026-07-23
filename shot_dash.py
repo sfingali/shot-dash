@@ -2161,7 +2161,7 @@ class Handler(BaseHTTPRequestHandler):
                         n += 1
                     new_row["output_file"] = "%s_%d%s" % (base, n, ext)
             autofill_shot(new_row)
-            rows.append(new_row)
+            rows.insert(idx + 1, new_row)
             write_csv(rows, fieldnames)
         self._json({"ok": True, "row": new_row})
 

@@ -1428,8 +1428,8 @@ async function editShot(){
   const p = key && payloadFor(key);
   if (!found || !p) return;
   const quality = $('editQuality').value;   // '' = project default
-  const heroTags = $('editHeroes').value.trim();
-  const editCount = Math.min(9, Math.max(1, parseInt($('editCount').value, 10) || 1));
+  let heroTags = $('editHeroes').value.trim();
+  let editCount = Math.min(9, Math.max(1, parseInt($('editCount').value, 10) || 1));
   closeModal('editModal');
   $('editInstr').value = '';
   $('editHeroes').value = '';
