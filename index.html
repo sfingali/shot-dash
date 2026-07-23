@@ -137,9 +137,12 @@ td.sl-sel .btn:hover{color:var(--red)}
 .tree .node{display:flex;justify-content:space-between;align-items:center;gap:var(--s1);padding:3px 8px;border-radius:var(--r1);cursor:pointer;font-size:12px;color:var(--text-dim);user-select:none}
 .tree .node:hover{color:var(--text);background:var(--surface-2)}
 .tree .node.active{background:var(--accent-dim);color:var(--accent)}
-.tree .node .n{color:var(--text-faint);font-size:10px;font-variant-numeric:tabular-nums}
+.tree .node .n{color:var(--text-faint);font-size:10px;font-variant-numeric:tabular-nums;flex-shrink:0}
+.tree .node .lbl{display:flex;align-items:center;gap:5px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tree .node .tw{width:11px;flex-shrink:0;font-size:8px;line-height:1;color:var(--text-faint);text-align:center}
+.tree .node.active .tw{color:var(--accent)}
 .tree .node.root{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-top:var(--s2)}
-.tree .node.child{margin-left:16px}
+.tree .node.child{margin-left:24px}
 .tree .node.all{font-weight:700;margin-top:0}
 
 /* ============ Refs + archive cards ============ */
@@ -611,6 +614,7 @@ const S = {
   busyKeys: new Set(),  // shots with a generate/edit in flight
   fieldEdit: null,      // {key, field}
   refSelCat: '',        // '' = all
+  treeOpen: new Set(),  // expanded tree roots
   refView: 'refs',      // 'refs' | 'heroes'
   refEditFile: null,
   heroEditId: null,
@@ -918,7 +922,7 @@ function updateBadges(){
 async function switchProject(name){
   try {
     await api('/api/project_switch', {name});
-    S.selectedKey = null; S.refSelCat = ''; S.refView = 'refs';
+    S.selectedKey = null; S.refSelCat = ''; S.refView = 'refs'; S.treeOpen.clear();
     clearViewer();
     await refreshAll();
     toast('Switched to ' + name);
@@ -935,7 +939,7 @@ async function createProject(){
     const d = await api('/api/project_create', {name});
     closeModal('projectModal');
     $('projName').value = '';
-    S.selectedKey = null; S.refSelCat = ''; S.refView = 'refs';
+    S.selectedKey = null; S.refSelCat = ''; S.refView = 'refs'; S.treeOpen.clear();
     clearViewer();
     await refreshAll();
     toast('Project created: ' + d.name);
@@ -1364,22 +1368,30 @@ function refCatCounts(){
 function renderRefTree(){
   const counts = refCatCounts();
   const all = [...new Set([...S.categories, ...Object.keys(S.refCats)])].sort();
-  const roots = [...new Set([...S.catRoots, ...all.filter(c => !c.includes('/'))])];
+  // parents come from canonical roots, flat categories, and the left part of any 'a/b' path
+  const derived = all.filter(c => c.includes('/')).map(c => c.split('/')[0]);
+  const roots = [...new Set([...all.filter(c => !c.includes('/')), ...derived])];
   // stable order: canonical roots first, then any extras alphabetically
-  const extras = roots.filter(r => !S.catRoots.includes(r)).sort();
-  const ordered = [...S.catRoots.filter(r => roots.includes(r) || all.some(c => c.startsWith(r + '/'))), ...extras];
+  const ordered = [...S.catRoots, ...roots.filter(r => !S.catRoots.includes(r)).sort()];
   const total = Object.values(counts).reduce((a, n) => a + n, 0);
   const active = (cat) => (S.refView === 'refs' && S.refSelCat === cat) ? ' active' : '';
   const rollup = (root) => (counts[root] || 0) + all.filter(c => c.startsWith(root + '/'))
       .reduce((a, c) => a + (counts[c] || 0), 0);
-  let html = '<div class="node all' + active('') + '" data-cat="">All references <span class="n">' + total + '</span></div>';
+  let html = '<div class="node all' + active('') + '" data-cat="">All references <span class="n">(' + total + ')</span></div>';
   for (const root of ordered){
-    html += '<div class="node root' + active(root) + '" data-cat="' + escA(root) + '">' +
-      esc(root.replace(/_/g, ' ')) + ' <span class="n">' + rollup(root) + '</span></div>';
-    for (const c of all.filter(c => c.startsWith(root + '/')).sort()){
-      const leaf = c.slice(root.length + 1);
-      html += '<div class="node child' + active(c) + '" data-cat="' + escA(c) + '">' +
-        esc(leaf.replace(/_/g, ' ')) + ' <span class="n">' + (counts[c] || 0) + '</span></div>';
+    const kids = all.filter(c => c.startsWith(root + '/')).sort();
+    const open = S.treeOpen.has(root);
+    const arrow = kids.length ? (open ? '&#9660;' : '&#9654;') : '';
+    html += '<div class="node root' + active(root) + '" data-cat="' + escA(root) + '" data-root="1">' +
+      '<span class="lbl"><span class="tw">' + arrow + '</span>' + esc(root.replace(/_/g, ' ')) + '</span>' +
+      '<span class="n">(' + rollup(root) + ')</span></div>';
+    if (open){
+      for (const c of kids){
+        const leaf = c.slice(root.length + 1);
+        html += '<div class="node child' + active(c) + '" data-cat="' + escA(c) + '">' +
+          '<span class="lbl">' + esc(leaf.replace(/_/g, ' ')) + '</span>' +
+          '<span class="n">(' + (counts[c] || 0) + ')</span></div>';
+      }
     }
   }
   $('refTree').innerHTML = html;
@@ -1387,7 +1399,12 @@ function renderRefTree(){
 $('refTree').addEventListener('click', e => {
   const n = e.target.closest('.node');
   if (!n) return;
-  S.refSelCat = n.getAttribute('data-cat') || '';
+  const cat = n.getAttribute('data-cat') || '';
+  if (n.hasAttribute('data-root')){
+    // parent row: toggle its children open/closed; selection follows the click
+    if (S.treeOpen.has(cat)) S.treeOpen.delete(cat); else S.treeOpen.add(cat);
+  }
+  S.refSelCat = cat;
   S.refView = 'refs';
   renderRefs();
 });
@@ -1561,6 +1578,7 @@ async function addCategory(){
     toast('Category added: ' + d.category);
     await fetchRefs();
     S.refSelCat = d.category;
+    if (d.category.includes('/')) S.treeOpen.add(d.category.split('/')[0]);
     renderRefs();
   } catch (e){ toast(e.message, {error: true}); }
 }
