@@ -226,7 +226,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 <div class="banner">
   <h1>&#127916; Shot Dash<span class="film" id="filmName"></span></h1>
   <div class="tabs" role="tablist" id="tabBar">
-    <button class="tab active" data-tab="shots" id="tabBtnShots">Shots <span class="n" id="shotsCount"></span></button>
+    <button class="tab active" data-tab="shots" id="tabBtnShots">Storyboards <span class="n" id="shotsCount"></span></button>
     <button class="tab" data-tab="refs" id="tabBtnRefs">References <span class="n" id="refsCount"></span></button>
     <button class="tab" data-tab="shotlist" id="tabBtnShotlist">Shotlist <span class="n" id="slCount"></span></button>
     <button class="tab" data-tab="archive" id="tabBtnArchive">Archive <span class="n" id="archCount"></span></button>
@@ -243,7 +243,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 <div id="tabShots" class="content active">
   <div class="col">
     <div class="toolbar">
-      <input id="search" class="input" placeholder="Filter shots&hellip;  ( / )" style="width:190px">
+      <input id="search" class="input" placeholder="Filter storyboards&hellip;  ( / )" style="width:190px">
       <select id="statusFilter" class="select">
         <option value="">All statuses</option>
         <option value="pending">pending</option>
@@ -256,14 +256,14 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
       <select id="sceneFilter" class="select"><option value="">All scenes</option></select>
       <select id="qualitySel" class="select" title="Render quality (saved to project)"></select>
       <select id="modelSel" class="select" title="Image model (saved to project)"></select>
-      <button class="btn btn-accent" data-act="newShot">+ New shot</button>
-      <button class="btn" data-act="duplicate" title="Duplicate the selected shot">&#10697; Duplicate</button>
-      <button class="btn" data-act="syncShotlist" title="Create shotlist rows for shots that have none">&#8645; Sync to Shotlist</button>
+      <button class="btn btn-accent" data-act="newShot">+ New storyboard</button>
+      <button class="btn" data-act="duplicate" title="Duplicate the selected storyboard">&#10697; Duplicate</button>
+      <button class="btn" data-act="syncShotlist" title="Create shotlist rows for storyboards that have none">&#8645; Sync to Shotlist</button>
       <select id="exportSel" class="select" title="Export data">
         <option value="">Export&hellip;</option>
-        <option value="shots|csv">Shots &mdash; CSV</option>
+        <option value="shots|csv">Storyboards &mdash; CSV</option>
         <option value="shotlist|csv">Shotlist &mdash; CSV</option>
-        <option value="shots|json">Shots &mdash; JSON</option>
+        <option value="shots|json">Storyboards &mdash; JSON</option>
         <option value="shotlist|json">Shotlist &mdash; JSON</option>
         <option value="all|json">Full project &mdash; JSON</option>
       </select>
@@ -279,7 +279,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
       <div class="viewer-left">
         <div class="viewer-frame" id="viewerFrame" title="Click for full size">
           <img id="frameImg" alt="" style="display:none">
-          <div class="empty" id="viewerEmpty">Select a shot to preview it here.<br><span style="color:var(--text-faint)">Arrow keys move between shots &middot; press ? for all shortcuts</span></div>
+          <div class="empty" id="viewerEmpty">Select a storyboard to preview it here.<br><span style="color:var(--text-faint)">Arrow keys move between storyboards &middot; press ? for all shortcuts</span></div>
           <div class="progress" id="viewerProgress"><i></i></div>
         </div>
         <div class="version-strip" id="versionStrip" title="Previous versions &mdash; click to make current"></div>
@@ -288,8 +288,10 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
         <div class="viewer-actions" id="viewerActions" style="display:none">
           <button id="genBtn" class="btn btn-accent" data-act="gen">&#9889; Generate</button>
           <button id="regenBtn" class="btn btn-accent" data-act="gen">&#128260; Regenerate</button>
+          <select id="genQualitySel" class="select" title="Quality for this generation only" aria-label="Quality for this generation"></select>
+          <span class="count" id="genCost" title="Estimated cost per generation"></span>
           <button id="editBtn" class="btn" data-act="editImg">&#9998; Edit image</button>
-          <button class="btn" data-act="duplicate">&#10697; Duplicate</button>
+          <button class="btn" data-act="duplicate" title="Duplicate the selected storyboard">&#10697; Duplicate</button>
           <select id="statusSelect" class="select">
             <option value="">Set status&hellip;</option>
             <option value="pending">pending</option>
@@ -330,7 +332,9 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <div class="col">
     <div class="toolbar">
       <button class="btn btn-accent" data-act="slAdd">+ Add row</button>
-      <button class="btn" data-act="syncShotlist" title="Create rows for Shots-tab items missing from the shotlist">&#8645; Sync from Shots</button>
+      <button class="btn" data-act="syncShotlist" title="Create rows for Storyboards-tab items missing from the shotlist">&#8645; Sync from Storyboards</button>
+      <button class="btn" data-act="slImport" title="Import a CSV file into the shotlist">&#8686; Import CSV</button>
+      <input type="file" id="slImportFile" accept=".csv,text/csv" style="display:none" aria-hidden="true">
       <span class="backup-ind" id="backupInd"><span class="dot"></span><span id="backupTxt">auto-backup every 10 min</span></span>
       <span class="spacer"></span>
       <span class="count" id="slRowCount"></span>
@@ -347,7 +351,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 <div id="tabArchive" class="content">
   <div class="col">
     <div class="toolbar">
-      <span class="count">Nothing here is deleted &mdash; archived shots keep their images and history, binned references stay on disk. Restore returns items to the board.</span>
+      <span class="count">Nothing here is deleted &mdash; archived storyboards keep their images and history, binned references stay on disk. Restore returns items to the board.</span>
     </div>
     <div class="cards" id="archiveGrid"></div>
   </div>
@@ -356,13 +360,14 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 <!-- MODALS -->
 <div class="modal" id="createModal">
 <div class="modal-inner">
-<h3>New shot</h3>
+<h3>New storyboard</h3>
 <div class="field"><label for="newInstr">Instructions (required)</label>
-  <textarea id="newInstr" placeholder="What should this shot show?"></textarea>
+  <textarea id="newInstr" placeholder="What should this storyboard show?"></textarea>
   <div class="err" id="newInstrErr">Instructions are required &mdash; the prompt is curated from them.</div>
 </div>
-<div class="field"><label for="newScene">Scene number</label>
-  <input id="newScene" placeholder="e.g. 42">
+<div class="field"><label for="newScene">Scene (from script canon)</label>
+  <input id="newScene" placeholder="e.g. 42" list="canonSceneList">
+  <datalist id="canonSceneList"></datalist>
   <div class="hint" id="newSceneHint">Location, characters and fountain text auto-fill from the scene when known.</div>
 </div>
 <div class="field"><label for="newFile">Output file</label>
@@ -379,7 +384,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 </div>
 <div class="modal-foot">
   <button class="btn" data-act="close" data-modal="createModal">Cancel</button>
-  <button class="btn btn-accent" data-act="createShot">Create shot</button>
+  <button class="btn btn-accent" data-act="createShot">Create storyboard</button>
 </div>
 </div>
 </div>
@@ -412,6 +417,10 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 </div>
 <div class="field"><label for="refGenCount">Generations</label>
   <input id="refGenCount" value="1" type="number" min="1" max="9">
+</div>
+<div class="field"><label for="refGenQuality">Quality</label>
+  <select id="refGenQuality"></select>
+  <div class="hint" id="refGenCost"></div>
 </div>
 <div class="modal-foot">
   <button class="btn" data-act="close" data-modal="refGenModal">Cancel</button>
@@ -458,7 +467,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 </div>
 <div class="field"><label for="heroDesc">Description</label>
   <textarea id="heroDesc" placeholder="Exact look of the asset&hellip;"></textarea>
-  <div class="hint">Appended to every generation prompt of tagged shots &mdash; this is what keeps the asset consistent across renders.</div>
+  <div class="hint">Appended to every generation prompt of tagged storyboards &mdash; this is what keeps the asset consistent across renders.</div>
 </div>
 <div class="field"><label for="heroBreak">Breakdown</label>
   <textarea id="heroBreak" style="min-height:56px" placeholder="Materials, wear, distinguishing details&hellip;"></textarea>
@@ -517,15 +526,35 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 </div>
 </div>
 
+<div class="modal" id="slImportModal">
+<div class="modal-inner">
+<h3>Import shotlist CSV</h3>
+<div class="field"><label>File</label>
+  <div class="mono" id="slImportName"></div>
+</div>
+<div class="field"><label for="slImportMode">Mode</label>
+  <select id="slImportMode">
+    <option value="merge">Merge &mdash; update rows by Order, append new ones</option>
+    <option value="replace">Replace &mdash; clear the shotlist and import fresh</option>
+  </select>
+  <div class="hint">Headers must match the shotlist columns (Order, Scene, Setup, &hellip;). Unknown columns are ignored.</div>
+</div>
+<div class="modal-foot">
+  <button class="btn" data-act="close" data-modal="slImportModal">Cancel</button>
+  <button class="btn btn-accent" data-act="slImportGo">Import</button>
+</div>
+</div>
+</div>
+
 <div class="modal" id="helpModal">
 <div class="modal-inner">
 <h3>Keyboard shortcuts</h3>
 <div class="kbd-list">
-  <span><kbd>&uarr;</kbd> <kbd>&darr;</kbd></span><span>Move between shots</span>
-  <kbd>a</kbd><span>Approve selected shot</span>
-  <kbd>g</kbd><span>Generate / regenerate selected shot</span>
-  <kbd>e</kbd><span>Edit selected shot's image</span>
-  <kbd>d</kbd><span>Duplicate selected shot</span>
+  <span><kbd>&uarr;</kbd> <kbd>&darr;</kbd></span><span>Move between storyboards</span>
+  <kbd>a</kbd><span>Approve selected storyboard</span>
+  <kbd>g</kbd><span>Generate / regenerate selected storyboard</span>
+  <kbd>e</kbd><span>Edit selected storyboard's image</span>
+  <kbd>d</kbd><span>Duplicate selected storyboard</span>
   <kbd>/</kbd><span>Focus the filter box</span>
   <kbd>?</kbd><span>Show this help</span>
   <kbd>Esc</kbd><span>Close any dialog</span>
@@ -555,6 +584,9 @@ const S = {
   heroes: [],
   projects: [],
   settings: {},         // active project settings (quality, model, prefix)
+  qualities: [],        // valid quality levels from the server
+  costs: {},            // quality -> per-image cost string ('$0.07')
+  canonScenes: [],      // [{id, label}] parsed from the fountain canon
   selectedKey: null,    // output_file, or 'row:N' for shots without one
   displayedKeys: [],    // current grid order, for keyboard navigation
   sortCol: 'shot_number',
@@ -716,8 +748,10 @@ async function fetchProjects(){
   sel.value = d.active || '';
   $('filmName').textContent = (d.active || '').replace(/[-_]/g, ' ');
   document.title = 'Shot Dash — ' + (d.active || '');
+  S.qualities = d.qualities || ['low','medium','high'];
+  S.costs = d.costs || {};
   const qs = $('qualitySel'); qs.innerHTML = '';
-  (d.qualities || ['low','medium','high']).forEach(q => {
+  S.qualities.forEach(q => {
     const o = document.createElement('option'); o.value = q; o.textContent = 'Quality: ' + q; qs.appendChild(o);
   });
   qs.value = S.settings.quality || 'medium';
@@ -726,6 +760,50 @@ async function fetchProjects(){
     const o = document.createElement('option'); o.value = m.id; o.textContent = m.label; ms.appendChild(o);
   });
   if (S.settings.model) ms.value = S.settings.model;
+  fillQualitySelects();
+}
+async function fetchCanon(){
+  try {
+    const d = await api('/api/canon');
+    S.canonScenes = d.scenes || [];
+  } catch (e){ S.canonScenes = []; }
+  const dl = $('canonSceneList'); dl.innerHTML = '';
+  S.canonScenes.forEach(sc => {
+    const o = document.createElement('option');
+    o.value = sc.id; o.label = sc.id + ' — ' + sc.label;
+    dl.appendChild(o);
+  });
+}
+/* Per-generation quality override selectors ('' = project default). */
+function qualityCost(q){ return S.costs[q] || ''; }
+function fillQualitySelects(){
+  const def = S.settings.quality || 'medium';
+  const defOpt = '<option value="">(Project default — ' + esc(def) +
+    (qualityCost(def) ? ' ' + esc(qualityCost(def)) : '') + ')</option>';
+  const opts = defOpt + S.qualities.map(q =>
+    '<option value="' + escA(q) + '">' + esc(q) +
+    (qualityCost(q) ? ' — ' + esc(qualityCost(q)) : '') + '</option>').join('');
+  ['genQualitySel','refGenQuality'].forEach(id => {
+    const sel = $(id);
+    const cur = sel.value;
+    sel.innerHTML = opts;
+    sel.value = S.qualities.includes(cur) ? cur : '';
+  });
+  updateGenCost();
+  updateRefGenCost();
+}
+function updateGenCost(){
+  const q = $('genQualitySel').value || S.settings.quality || 'medium';
+  $('genCost').textContent = qualityCost(q) ? 'est. ' + qualityCost(q) : '';
+  $('genCost').title = 'Estimated cost per generation at ' + q + ' quality';
+}
+function updateRefGenCost(){
+  const q = $('refGenQuality').value || S.settings.quality || 'medium';
+  const count = Math.min(9, Math.max(1, parseInt($('refGenCount').value, 10) || 1));
+  const per = parseFloat((qualityCost(q) || '').replace('$', '')) || 0;
+  $('refGenCost').textContent = per
+    ? 'Estimated cost: ' + qualityCost(q) + ' × ' + count + ' ≈ $' + (per * count).toFixed(2)
+    : '';
 }
 async function fetchShots(){
   const [shotsRes, framesRes] = await Promise.all([api('/api/shots'), api('/api/frames')]);
@@ -787,7 +865,8 @@ function refreshData(){
   }).catch(e => toast(e.message, {error: true}));
 }
 function refreshAll(){
-  return fetchProjects().then(refreshData).catch(e => toast(e.message, {error: true}));
+  return fetchProjects().then(() => Promise.all([refreshData(), fetchCanon()]))
+    .catch(e => toast(e.message, {error: true}));
 }
 function renderStats(){
   const active = S.shots.filter(s => s.status !== 'archived').length;
@@ -795,7 +874,7 @@ function renderStats(){
   const c = {};
   for (const s of S.shots) c[s.status] = (c[s.status] || 0) + 1;
   $('stats').innerHTML =
-    '<span><b>' + active + '</b> shots</span>' +
+    '<span><b>' + active + '</b> storyboards</span>' +
     '<span><b>' + refTotal + '</b> refs</span>' +
     '<span><b style="color:var(--green)">' + (c.generated || 0) + '</b> generated</span>' +
     '<span><b style="color:var(--accent)">' + (c.approved || 0) + '</b> approved</span>';
@@ -843,6 +922,7 @@ async function saveSetting(field, value){
   try {
     await api('/api/project_update', {field, value});
     S.settings[field] = value;
+    if (field === 'quality') fillQualitySelects();
     toast(field + ' → ' + value);
   } catch (e){ toast(e.message, {error: true}); fetchProjects(); }
 }
@@ -900,8 +980,8 @@ function renderGrid(){
     const e = $('gridEmpty');
     e.style.display = 'block';
     e.innerHTML = active === 0
-      ? '<div class="big">No shots yet</div>Create the first one to start the board.<br><br><button class="btn btn-accent" data-act="newShot">+ New shot</button>'
-      : '<div class="big">No shots match</div>Nothing matches the current filter.<br><br><button class="btn" data-act="clearFilters">Clear filters</button>';
+      ? '<div class="big">No storyboards yet</div>Create the first one to start the board.<br><br><button class="btn btn-accent" data-act="newShot">+ New storyboard</button>'
+      : '<div class="big">No storyboards match</div>Nothing matches the current filter.<br><br><button class="btn" data-act="clearFilters">Clear filters</button>';
     $('count').textContent = '';
     return;
   }
@@ -919,7 +999,7 @@ function renderGrid(){
     return '<tr draggable="true" data-key="' + escA(key) + '"' +
       (S.selectedKey === key ? ' class="selected"' : '') + '>' + cells + '</tr>';
   }).join('');
-  $('count').textContent = list.length === active ? active + ' shots' : list.length + ' of ' + active + ' shots';
+  $('count').textContent = list.length === active ? active + ' storyboards' : list.length + ' of ' + active + ' storyboards';
 }
 function sortBy(c){
   if (S.sortCol === c) S.sortDir = -S.sortDir; else { S.sortCol = c; S.sortDir = 1; }
@@ -1008,7 +1088,7 @@ function selectShot(key, keepScroll){
     img.style.display = 'none'; img.src = '';
     $('viewerEmpty').style.display = 'block';
     $('viewerEmpty').innerHTML = (s.status === 'pending' || s.status === 'curated')
-      ? 'No image yet — press <b>Generate</b> (or <kbd>g</kbd>) to render this shot.'
+      ? 'No image yet — press <b>Generate</b> (or <kbd>g</kbd>) to render this storyboard.'
       : 'Image file not found on disk: <span class="mono">' + esc(s.output_file || '?') + '</span>';
   }
   renderVersionStrip(s);
@@ -1092,9 +1172,10 @@ async function generateShot(){
   const p = payloadFor(key);
   if (!found || !p) return;
   const label = (found.shot._frame_url ? 'Regenerating' : 'Generating') + ' sc ' + (found.shot.scene_number || '?');
+  const quality = $('genQualitySel').value;   // '' = project default
   const end = startJob(label, key);
   try {
-    const d = await api('/api/generate', p);
+    const d = await api('/api/generate', quality ? Object.assign({quality}, p) : p);
     S.selectedKey = d.output_file;   // identity moves to the new version
     toast('Generated ' + d.output_file + ' (v' + d.version + ', ' + d.size_kb + ' KB)');
     await refreshData();
@@ -1142,7 +1223,7 @@ async function archiveShot(){
     const file = found.shot.output_file || '';
     clearViewer();
     await refreshData();
-    toast('Shot archived', {
+    toast('Storyboard archived', {
       actionLabel: 'Undo',
       onAction: async () => {
         try {
@@ -1155,7 +1236,7 @@ async function archiveShot(){
   } catch (e){ toast(e.message, {error: true}); }
 }
 async function duplicateShot(){
-  if (!S.selectedKey){ toast('Select a shot to duplicate first', {error: true}); return; }
+  if (!S.selectedKey){ toast('Select a storyboard to duplicate first', {error: true}); return; }
   const p = payloadFor(S.selectedKey);
   if (!p) return;
   try {
@@ -1204,7 +1285,7 @@ async function createShot(){
       const d = await api('/api/create', {scene_number: sc, output_file: fn, lens, verbatim_instructions: instr, status});
       if (!firstFile) firstFile = d.row && d.row.output_file;
     }
-    toast(gens > 1 ? 'Created ' + gens + ' shots' : 'Shot created');
+    toast(gens > 1 ? 'Created ' + gens + ' storyboards' : 'Storyboard created');
     $('newInstr').value = ''; $('newScene').value = ''; autoGenFilename();
     await refreshData();
     if (firstFile) selectShot(firstFile);
@@ -1390,6 +1471,7 @@ function showRefGenerate(){
   $('refGenErr').classList.remove('on');
   $('refGenInstr').classList.remove('invalid');
   if (S.refSelCat && !$('refGenCat').value) $('refGenCat').value = S.refSelCat;
+  updateRefGenCost();
   openModal('refGenModal');
   $('refGenInstr').focus();
 }
@@ -1431,10 +1513,13 @@ async function generateRef(){
   }
   const cat = $('refGenCat').value.trim() || 'misc';
   const count = Math.min(9, Math.max(1, parseInt($('refGenCount').value, 10) || 1));
+  const quality = $('refGenQuality').value;   // '' = project default
   closeModal('refGenModal');
   const end = startJob('Reference: ' + cat + (count > 1 ? ' ×' + count : ''));
   try {
-    const d = await api('/api/generate_ref', {verbatim_instructions: instr, category: cat, count});
+    const body = {verbatim_instructions: instr, category: cat, count};
+    if (quality) body.quality = quality;
+    const d = await api('/api/generate_ref', body);
     toast('Saved ' + d.files.length + ' reference' + (d.files.length > 1 ? 's' : '') + ' in ' + d.category);
     $('refGenInstr').value = '';
     fetchRefs();
@@ -1472,11 +1557,11 @@ function renderHeroPanel(){
   let html = '<div class="ref-cat"><h3>Hero assets<span class="n">' + heroes.length + '</span></h3>' +
     '<div style="margin-bottom:var(--s3);display:flex;gap:var(--s2);align-items:center">' +
     '<button class="btn btn-accent" data-act="heroNew">+ New hero asset</button>' +
-    '<span class="count">Hero descriptions are appended to the prompts of tagged shots. Mass Regenerate pushes an updated description into every tagged frame.</span>' +
+    '<span class="count">Hero descriptions are appended to the prompts of tagged storyboards. Mass Regenerate pushes an updated description into every tagged frame.</span>' +
     '</div><div class="card-row">';
   if (!heroes.length){
     html += '</div><div class="empty-state" style="width:100%"><div class="big">No hero assets yet</div>' +
-      'Define a prop, wardrobe piece or vehicle once and keep it consistent across every shot.</div></div>';
+      'Define a prop, wardrobe piece or vehicle once and keep it consistent across every storyboard.</div></div>';
     $('refsGrid').innerHTML = html + archivedHeroesHtml();
     $('refCount2').textContent = '';
     return;
@@ -1488,7 +1573,7 @@ function renderHeroPanel(){
       : '';
     const shotsList = tagged.length
       ? tagged.map(s => esc(s.output_file || ('sc ' + s.scene_number))).join('<br>')
-      : '<span style="color:var(--text-faint)">no shots tagged</span>';
+      : '<span style="color:var(--text-faint)">no storyboards tagged</span>';
     return '<div class="hero-card">' +
       '<div class="h-top">' + thumb + '<div><div class="h-name">' + esc(h.name) + '</div>' +
       '<div class="h-type">' + esc(h.type || 'asset') + ' · ' + esc(h.id) + '</div></div></div>' +
@@ -1496,7 +1581,7 @@ function renderHeroPanel(){
       (h.breakdown ? '<div class="h-meta"><b>Breakdown:</b> ' + esc(String(h.breakdown).substring(0, 120)) + '</div>' : '') +
       (h.colors ? '<div class="h-meta"><b>Colors:</b> ' + esc(h.colors) + '</div>' : '') +
       (h.notes ? '<div class="h-meta"><b>Notes:</b> ' + esc(h.notes) + '</div>' : '') +
-      '<div class="h-meta"><b>Tagged in ' + tagged.length + ' shot' + (tagged.length === 1 ? '' : 's') + ':</b></div>' +
+      '<div class="h-meta"><b>Tagged in ' + tagged.length + ' storyboard' + (tagged.length === 1 ? '' : 's') + ':</b></div>' +
       '<div class="h-shots">' + shotsList + '</div>' +
       '<div class="h-acts">' +
       '<button class="btn" data-hedit="' + escA(h.id) + '">✎ Edit</button>' +
@@ -1587,7 +1672,7 @@ async function massRegen(id){
       ' tagged with "' + (h ? h.name : id) + '"? Each is an image-to-image edit (1–3 min per frame); old versions are kept in history.', 'Start')) return;
   try {
     const d = await api('/api/mass_regen', {hero_id: id});
-    toast('Mass regen queued: ' + d.count + ' shot' + (d.count === 1 ? '' : 's'));
+    toast('Mass regen queued: ' + d.count + ' storyboard' + (d.count === 1 ? '' : 's'));
     trackJob(d.job_id, 'Mass regen: ' + (d.hero || id));
   } catch (e){ toast(e.message, {error: true}); }
 }
@@ -1607,9 +1692,10 @@ function renderShotlist(){
     $('slBody').innerHTML = '';
     $('slEmpty').style.display = 'block';
     $('slEmpty').innerHTML = '<div class="big">Shotlist is empty</div>' +
-      'Add a row by hand, or pull every shot from the Shots tab.<br><br>' +
+      'Add a row by hand, pull every storyboard from the Storyboards tab, or import a CSV.<br><br>' +
       '<button class="btn btn-accent" data-act="slAdd">+ Add row</button> ' +
-      '<button class="btn" data-act="syncShotlist">&#8645; Sync from Shots</button>';
+      '<button class="btn" data-act="syncShotlist">&#8645; Sync from Storyboards</button> ' +
+      '<button class="btn" data-act="slImport">&#8686; Import CSV</button>';
     $('slRowCount').textContent = '';
     return;
   }
@@ -1639,16 +1725,37 @@ function startCellEdit(td){
   const inp = document.createElement('input');
   inp.className = 'sl-input';
   inp.value = cur;
+  // Scene cells offer the canonical scene list from the fountain script.
+  if (col === 'Scene') inp.setAttribute('list', 'canonSceneList');
   td.appendChild(inp);
   inp.focus();
   inp.select();
   let done = false;
-  const cancel = () => { done = true; renderShotlist(); };
+  // Restore this one cell with safe DOM ops instead of rebuilding the whole
+  // table: an innerHTML rebuild while an input still has focus removes the
+  // focused node mid-assignment, which fires blur synchronously and re-enters
+  // renderShotlist inside the innerHTML operation — Chrome then throws
+  // "The node to be removed is no longer a child of this node".
+  const restore = (val) => {
+    inp.removeEventListener('blur', commit);
+    if (inp.parentNode === td) td.removeChild(inp);
+    td.textContent = val;
+  };
+  const cancel = () => {
+    if (done) return;
+    done = true;
+    restore(cur);
+  };
   const commit = async () => {
     if (done) return;
     done = true;
+    inp.removeEventListener('blur', commit);
+    // If a re-render already replaced the table under us (this blur was fired
+    // by that removal), the DOM is fresh — don't touch it.
+    if (!document.contains(inp)) return;
     const v = inp.value;
-    if (v === cur){ renderShotlist(); return; }
+    if (v === cur){ restore(cur); return; }
+    restore(v); // optimistic; fetchShotlist re-renders with server truth
     try {
       await api('/api/shotlist_update', {row_index: rowIdx, Order: order, field: col, value: v});
       backupSaved();
@@ -1674,15 +1781,46 @@ async function addShotlistRow(){
   } catch (e){ toast(e.message, {error: true}); }
 }
 
+/* ============ Shotlist CSV import ============ */
+let slImportText = null;
+$('slImportFile').addEventListener('change', e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';   // allow re-picking the same file later
+  if (!f) return;
+  if (f.size > 900 * 1024){ toast('CSV too large (max ~900 KB)', {error: true}); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    slImportText = String(reader.result || '');
+    $('slImportName').textContent = f.name + ' (' + Math.max(1, Math.round(f.size / 1024)) + ' KB)';
+    $('slImportMode').value = 'merge';
+    openModal('slImportModal');
+  };
+  reader.onerror = () => toast('Could not read ' + f.name, {error: true});
+  reader.readAsText(f);
+});
+async function importShotlistCsv(){
+  if (!slImportText){ closeModal('slImportModal'); return; }
+  const mode = $('slImportMode').value || 'merge';
+  const text = slImportText;
+  slImportText = null;
+  closeModal('slImportModal');
+  try {
+    const d = await api('/api/shotlist_import?mode=' + encodeURIComponent(mode), {csv: text});
+    backupSaved();
+    await fetchShotlist();
+    toast('Imported (' + d.mode + ') — ' + d.created + ' added, ' + d.updated + ' updated, ' + d.total + ' total');
+  } catch (e){ toast(e.message, {error: true}); }
+}
+
 /* ============ Archive tab ============ */
 function renderArchive(){
   const archivedShots = [];
   S.shots.forEach((s, i) => { if (s.status === 'archived') archivedShots.push({s, i, key: keyFor(s, i)}); });
   let html = '';
   // archived shots
-  html += '<div class="ref-cat"><h3>Archived shots<span class="n">' + archivedShots.length + '</span></h3>';
+  html += '<div class="ref-cat"><h3>Archived storyboards<span class="n">' + archivedShots.length + '</span></h3>';
   if (!archivedShots.length){
-    html += '<div class="count">Nothing archived. Archived shots appear here and can be restored anytime.</div>';
+    html += '<div class="count">Nothing archived. Archived storyboards appear here and can be restored anytime.</div>';
   } else {
     html += '<div class="card-row">' + archivedShots.map(({s, key}) => {
       const img = s._frame_url
@@ -1776,6 +1914,8 @@ const ACTIONS = {
   saveField: saveFieldEdit,
   syncShotlist,
   slAdd: addShotlistRow,
+  slImport: () => $('slImportFile').click(),
+  slImportGo: importShotlistCsv,
   refGen: showRefGenerate,
   generateRef,
   editRef,
@@ -1814,6 +1954,9 @@ $('statusSelect').addEventListener('change', e => setStatus(e.target.value));
 $('projectSel').addEventListener('change', e => switchProject(e.target.value));
 $('qualitySel').addEventListener('change', e => saveSetting('quality', e.target.value));
 $('modelSel').addEventListener('change', e => saveSetting('model', e.target.value));
+$('genQualitySel').addEventListener('change', updateGenCost);
+$('refGenQuality').addEventListener('change', updateRefGenCost);
+$('refGenCount').addEventListener('input', updateRefGenCost);
 $('exportSel').addEventListener('change', e => {
   const v = e.target.value;
   if (!v) return;

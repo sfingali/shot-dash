@@ -363,6 +363,17 @@ def active_quality():
     return q if q in QUALITY_LEVELS else "medium"
 
 
+def requested_quality(data):
+    """Per-request quality override: use the request's 'quality' when given
+    (must be a valid level), else the project default."""
+    q = str(data.get("quality") or "").strip().lower()
+    if not q:
+        return active_quality()
+    if q not in QUALITY_LEVELS:
+        raise ApiError("Quality must be one of: " + ", ".join(QUALITY_LEVELS))
+    return q
+
+
 def active_model():
     m = active_project().get("model") or DEFAULT_MODEL
     return m if m in IMAGE_MODELS else DEFAULT_MODEL
@@ -1187,6 +1198,53 @@ def _canon_texts():
     return texts
 
 
+def canon_scenes():
+    """Canonical scene list parsed from .fountain files in the canon dir.
+    Scene headers are lines that start with a scene number followed by a
+    dot — '1. INT. KITCHEN - DAY', '2A. EXT. YARD - NIGHT' — with a
+    secondary pattern for standard fountain '#12#' slugline suffixes.
+    Returns an ordered [{id, label}] list; falls back to the built-in
+    SCENE_LOOKUP when the canon dir has no fountain scene headers."""
+    scenes, seen = [], set()
+    head_re = re.compile(r"^\s*(\d+[A-Za-z]?)\.\s+(.+?)\s*$")
+    slug_num_re = re.compile(r"^\s*((?:INT|EXT|EST|I/E)[\./\s].*?)\s*"
+                             r"#(\d+[A-Za-z]?)#\s*$", re.I)
+
+    def add(sid, label):
+        sid = sid.upper()
+        if sid not in seen:
+            seen.add(sid)
+            scenes.append({"id": sid, "label": label})
+
+    cd = canon_dir()
+    if cd and os.path.isdir(cd):
+        try:
+            for p in sorted(Path(cd).iterdir()):
+                if not (p.is_file() and p.suffix.lower() == ".fountain"):
+                    continue
+                try:
+                    text = p.read_text(errors="replace")[:800000]
+                except OSError:
+                    continue
+                for line in text.splitlines():
+                    m = head_re.match(line)
+                    if m:
+                        add(m.group(1), m.group(2))
+                        continue
+                    m = slug_num_re.match(line)
+                    if m:
+                        add(m.group(2), m.group(1))
+        except OSError:
+            pass
+    if not scenes:
+        def skey(k):
+            m = re.match(r"(\d+)([A-Za-z]*)", k)
+            return (int(m.group(1)), m.group(2)) if m else (10**9, k)
+        for sid in sorted(SCENE_LOOKUP, key=skey):
+            add(sid, SCENE_LOOKUP[sid]["location"])
+    return scenes
+
+
 def canon_sluglines():
     """All INT./EXT. sluglines found in canon docs, falling back to the
     built-in scene lookup (and scene_text.json) for THE WAIF."""
@@ -1685,7 +1743,13 @@ class Handler(BaseHTTPRequestHandler):
                 "models": [{"id": mid, "label": IMAGE_MODELS[mid]["label"]}
                            for mid in IMAGE_MODELS],
                 "qualities": list(QUALITY_LEVELS),
+                "costs": dict(QUALITY_COST),
             })
+
+        elif path == "/api/canon":
+            scenes = canon_scenes()
+            self._json({"scenes": scenes,
+                        "map": {s["id"]: s["label"] for s in scenes}})
 
         elif path == "/api/shotlist":
             with SHOTLIST_LOCK:
@@ -1793,9 +1857,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         snapshot_ctx()
-        handler = self.POST_ROUTES.get(self.path)
+        parsed = urllib.parse.urlparse(self.path)
+        self.post_query = urllib.parse.parse_qs(parsed.query)
+        handler = self.POST_ROUTES.get(parsed.path)
         if handler is None:
-            return self._error("Unknown endpoint: " + self.path, 404)
+            return self._error("Unknown endpoint: " + parsed.path, 404)
         # CSRF / DNS-rebinding hardening: browsers can't send a cross-origin
         # application/json POST without a preflight, so require it.
         ct = (self.headers.get("Content-Type") or "").split(";")[0].strip()
@@ -1803,7 +1869,7 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             return self._error("Content-Type must be application/json", 415)
         sem = None
-        if self.path in THROTTLED_ROUTES:
+        if parsed.path in THROTTLED_ROUTES:
             sem = _gen_semaphore(self.client_address[0])
             if not sem.acquire(blocking=False):
                 return self._error("Too many concurrent generate/edit "
@@ -1971,7 +2037,7 @@ class Handler(BaseHTTPRequestHandler):
             identity = (shot.get("output_file") or "").strip()
             scene = shot.get("scene_number", "XX")
         key = require_openai_key()
-        quality = active_quality()
+        quality = requested_quality(data)
         model = active_model()
         img_bytes = openai_generate_image(prompt, key, quality, model)
 
@@ -2075,6 +2141,7 @@ class Handler(BaseHTTPRequestHandler):
         category = category or "misc"
         cat_leaf = category.split("/")[-1]
         key = require_openai_key()
+        quality = requested_quality(data)
         prompt = verbatim + ". " + HOUSE_STYLE
         count = max(1, min(9, int(data.get("count") or 1)))
         files = []
@@ -2082,7 +2149,7 @@ class Handler(BaseHTTPRequestHandler):
         cat_dir = os.path.join(refs_dir(), category)
         os.makedirs(cat_dir, exist_ok=True)
         for n in range(count):
-            img_bytes = openai_generate_image(prompt, key)
+            img_bytes = openai_generate_image(prompt, key, quality)
             fname = "ref_%s_%s_%d.png" % (cat_leaf, stamp, n + 1)
             with open(os.path.join(cat_dir, fname), "wb") as of:
                 of.write(img_bytes)
@@ -2404,6 +2471,80 @@ class Handler(BaseHTTPRequestHandler):
                     write_csv(rows2, fn2)
         self._json({"ok": True, "created": created, "updated": 0})
 
+    def api_shotlist_import(self, data):
+        """Import CSV text into the shotlist. The CSV rides in the JSON
+        body as {"csv": "..."} (the CSRF guard requires application/json).
+        ?mode=replace clears the shotlist first; ?mode=merge (default)
+        upserts by Order — matching rows are updated column-by-column,
+        unmatched rows are appended. Unknown CSV columns are ignored."""
+        text = data.get("csv")
+        if not isinstance(text, str) or not text.strip():
+            raise ApiError("Missing csv text")
+        mode = (self.post_query.get("mode") or [data.get("mode") or "merge"])[0]
+        mode = (mode or "merge").strip().lower()
+        if mode not in ("merge", "replace"):
+            raise ApiError("mode must be 'merge' or 'replace'")
+
+        reader = csv.DictReader(io.StringIO(text))
+        header = [h.strip() for h in (reader.fieldnames or []) if h]
+        known = [h for h in header if h in SHOTLIST_COLUMNS]
+        if not known:
+            raise ApiError("CSV has no recognized shotlist columns — "
+                           "expected headers like: "
+                           + ", ".join(SHOTLIST_COLUMNS[:6]) + ", ...")
+
+        def order_key(v):
+            v = str(v or "").strip()
+            try:
+                return "%g" % float(v)
+            except ValueError:
+                return v
+
+        imported = []
+        for n, raw in enumerate(reader, start=2):  # 1 = header line
+            raw.pop(None, None)
+            row = {c: "" for c in SHOTLIST_COLUMNS}
+            for h in known:
+                try:
+                    row[h] = coerce_shotlist_value(h, raw.get(h))
+                except ApiError as e:
+                    raise ApiError("CSV line %d: %s" % (n, e))
+            if any(row.values()):
+                imported.append(row)
+        if not imported:
+            raise ApiError("CSV contained no data rows")
+
+        created = updated = 0
+        with SHOTLIST_LOCK:
+            rows = [] if mode == "replace" else read_shotlist()
+            by_order = {}
+            for r in rows:
+                k = order_key(r.get("Order"))
+                if k and k not in by_order:
+                    by_order[k] = r
+            next_order = next_shotlist_order(rows)
+            for row in imported:
+                k = order_key(row.get("Order"))
+                target = by_order.get(k) if k else None
+                if target is not None:
+                    for h in known:
+                        target[h] = row[h]
+                    updated += 1
+                else:
+                    if not row["Order"]:
+                        row["Order"] = "%g" % next_order
+                        next_order += 1
+                    if not row["Shot Count"]:
+                        row["Shot Count"] = "1"
+                    rows.append(row)
+                    if k or row["Order"]:
+                        by_order.setdefault(order_key(row["Order"]), row)
+                    created += 1
+            sort_shotlist(rows)
+            write_shotlist(rows)
+        self._json({"ok": True, "mode": mode, "created": created,
+                    "updated": updated, "total": len(rows)})
+
     # - hero asset endpoints -
     HERO_FIELDS = ("name", "type", "category", "description", "breakdown",
                    "colors", "notes", "ref_image")
@@ -2532,6 +2673,7 @@ Handler.POST_ROUTES = {
     "/api/shotlist_create": Handler.api_shotlist_create,
     "/api/shotlist_update": Handler.api_shotlist_update,
     "/api/shotlist_sync": Handler.api_shotlist_sync,
+    "/api/shotlist_import": Handler.api_shotlist_import,
     "/api/hero_create": Handler.api_hero_create,
     "/api/hero_update": Handler.api_hero_update,
     "/api/hero_delete": Handler.api_hero_delete,
