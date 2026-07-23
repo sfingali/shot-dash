@@ -2755,7 +2755,8 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError("Unknown hero: " + hero_id, 404)
         key = require_openai_key()
         quality = requested_quality(data)
-        img_bytes = openai_generate_image(prompt, key, quality)
+        final_prompt = prompt + ". " + HOUSE_STYLE if data.get("apply_style") else prompt
+        img_bytes = openai_generate_image(final_prompt, key, quality)
         # Save directly to the reference tree — no storyboard row. This is for
         # generating reference images, not storyboards. The image lands in the
         # hero's reference category and becomes the hero card thumbnail.

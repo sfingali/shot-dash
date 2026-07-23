@@ -453,6 +453,9 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 <div class="field"><label for="heroGenCount">Generations</label>
   <input id="heroGenCount" value="1" type="number" min="1" max="9">
 </div>
+<div class="field"><label style="display:flex;align-items:center;gap:var(--s2);cursor:pointer">
+  <input type="checkbox" id="heroGenStyle" style="width:auto"> Apply cinematic house style (palette, scope ratio, mood)
+</label></div>
 <div class="modal-foot">
   <button class="btn" data-act="close" data-modal="heroGenModal">Cancel</button>
   <button class="btn btn-accent" data-act="genFromHero">Generate</button>
@@ -2885,13 +2888,14 @@ const ACTIONS = {
     const hero = heroById(heroGenTargetId);
     if (!hero) return;
     const quality = $('heroGenQuality').value;   // '' = project default
+      const applyStyle = $('heroGenStyle').checked;
     const count = Math.min(9, Math.max(1, parseInt($('heroGenCount').value, 10) || 1));
     closeModal('heroGenModal');
     const end = startJob('Generating ' + count + ' reference image' + (count === 1 ? '' : 's') + ' from ' + hero.name);
     try {
       let files = [];
       for (let g = 0; g < count; g++) {
-        const body = {hero_id: hero.id, prompt};
+        const body = {hero_id: hero.id, prompt, apply_style: applyStyle};
         if (quality) body.quality = quality;
         const d = await api('api/generate_from_hero', body);
         if (d.output_file) files.push(d.output_file);
