@@ -1697,6 +1697,11 @@ def build_generation_prompt(shot):
     if not curated:
         raise ApiError("Shot needs curation first — fill in the curated "
                        "description, then generate", 400)
+    # If curated already ends with the house-style marker, it was built
+    # during create — use it as-is to avoid double-injection.
+    if "No text, no watermark, no logos" in curated:
+        return curated
+    # Legacy shots: build from curated + components
     parts = [curated]
     lens = (shot.get("lens") or "28mm").strip()
     if lens:
@@ -2171,17 +2176,30 @@ class Handler(BaseHTTPRequestHandler):
                         n += 1
                     new_row["output_file"] = "%s_%d%s" % (base, n, ext)
             autofill_shot(new_row)
-            # Seed the curated description on creation so the user can see
-            # and edit it before generating. Include hero tags so curation is
-            # visibly different from raw instructions, but keep the full hero
-            # descriptions out — those are injected by build_generation_prompt.
+            # Build the full curated description on creation — lens, heroes,
+            # house style, everything — so the user sees exactly what generate
+            # will send. The marker at the end tells build_generation_prompt()
+            # to use it as-is instead of re-assembling.
             if not (new_row.get("curated_description") or "").strip():
                 verbatim = (new_row.get("verbatim_instructions") or "").strip()
                 if verbatim:
                     curated = verbatim
                     tags = (new_row.get("hero_tags") or "").strip()
                     if tags:
-                        curated += "\n[Heroes: " + tags + "]"
+                        heroes = load_heroes()
+                        for h in heroes:
+                            if not h.get("archived"):
+                                if h["name"] in [t.strip() for t in tags.split(",")] or h["id"] in [t.strip() for t in tags.split(",")]:
+                                    desc = (h.get("description") or "").strip()
+                                    if desc:
+                                        curated += ". Keep this element exactly consistent — " + desc
+                    lens = (new_row.get("lens") or "28mm").strip()
+                    if lens:
+                        curated += ". Shot with " + lens + " lens"
+                    loc = (new_row.get("location") or "").strip()
+                    if loc:
+                        curated += ". " + loc
+                    curated += ". Desaturated palette, cool shadows. Photorealistic cinematic still from an indie horror film. Scope " + (new_row.get("aspect_ratio") or "2.39:1").strip() + ". No text, no watermark, no logos."
                     new_row["curated_description"] = curated
             # Insert after a specific row if after_file is provided
             after_file = (data.get("after_file") or "").strip()
