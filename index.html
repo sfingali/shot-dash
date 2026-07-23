@@ -695,6 +695,7 @@ const S = {
   refTab: 'characters', // references top-level category tab
   refSub: '',           // references sub-category filter ('' = all)
   refView: 'refs',      // 'refs' | 'heroes' | 'descriptions'
+  refTab: 'characters', // references category tab
   descCat: 'characters', // descriptions-panel category filter
   refEditFile: null,
   heroEditId: null,
@@ -1570,26 +1571,32 @@ function renderRefs(){
   if (S.refView === 'heroes'){ renderHeroPanel(); return; }
   if (S.refView === 'descriptions'){ renderDescPanel(); return; }
   const q = ($('refSearch').value || '').toLowerCase();
-  const sel = S.refSelCat;
-  const cats = Object.keys(S.refCats).sort();
+  const tab = S.refTab || 'characters';
+  const tabs = classifyRefs(q);
+  const active = tabs[tab] || {};
+  const subs = Object.keys(active).sort();
   let html = '', total = 0, eager = 0;
-  // Only the first batch gets real <img> tags; the rest are placeholders
-  // hydrated by refLazyIO as they scroll into view.
   const card = (fn, opts) => refCard(fn, Object.assign({lazy: eager++ >= REF_LAZY_BATCH}, opts));
-  for (const cat of cats){
-    if (sel && cat !== sel && !cat.startsWith(sel + '/')) continue;
-    const imgs = (S.refCats[cat] || []).filter(f => !q || f.toLowerCase().includes(q));
-    if (!imgs.length) continue;
+  
+  // Category tabs
+  html += '<div class="tabs" style="margin-bottom:var(--s3)">';
+  [['characters','Characters'],['locations','Locations'],['props','Props']].forEach(([t,label]) => {
+    const count = Object.values(tabs[t]||{}).reduce((a,b) => a+b.length, 0);
+    html += '<button class="tab' + (tab===t?' active':'') + '" data-reftab="' + t + '">' + label + ' <span class="n">' + (count||'') + '</span></button>';
+  });
+  html += '</div>';
+  
+  for (const sub of subs){
+    const imgs = active[sub];
     total += imgs.length;
-    html += '<div class="ref-cat"><h3>' + esc(cat) + '<span class="n">' + imgs.length + '</span></h3><div class="card-row">' +
+    html += '<div class="ref-cat"><h3>' + esc(sub) + '<span class="n">' + imgs.length + '</span></h3><div class="card-row">' +
       imgs.map(fn => card(fn, {showCat: false})).join('') + '</div></div>';
   }
-  if (!html){
-    html = '<div class="empty-state"><div class="big">' + (q || sel ? 'No references match' : 'No references yet') + '</div>' +
-      (q || sel ? 'Try a different filter or category.' : 'Generate the first reference image for the look book.') +
-      '<br><br><button class="btn btn-accent" data-act="refGen">+ New reference</button></div>';
+  if (!total){
+    html += '<div class="empty-state"><div class="big">' + (q ? 'No references match' : 'No references in ' + tab) + '</div>' +
+      'Generate reference images from the Descriptions panel or upload them.</div>';
   }
-  // Binned refs: collapsible section (restore-only)
+  // Binned refs
   const bins = S.binRefs.filter(f => !q || f.toLowerCase().includes(q));
   if (bins.length){
     html += '<details class="bin"><summary>Bin — ' + bins.length + ' reference' + (bins.length === 1 ? '' : 's') +
@@ -1637,6 +1644,10 @@ function refLazyObserve(){
   }, {root: $('refsGrid'), rootMargin: '200px'});
   refLazyQueue.forEach(t => refLazyIO.observe(t));
 }
+$('refsGrid').addEventListener('click', e => {
+  const tb = e.target.closest('[data-reftab]');
+  if (tb){ S.refTab = tb.getAttribute('data-reftab'); renderRefs(); }
+});
 $('refsGrid').addEventListener('click', async e => {
   const del = e.target.closest('[data-del]');
   const arch = e.target.closest('[data-arch]');
