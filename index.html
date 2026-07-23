@@ -419,9 +419,9 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <input id="newLens" placeholder="28mm">
 </div>
 <div class="field"><label for="newHeroes">Hero assets</label>
-  <input id="newHeroes" placeholder="e.g. Ben — Motel / Divorce, The Revolver" list="heroTagList">
-  <datalist id="heroTagList"></datalist>
-  <div class="hint">Add hero tags one at a time from the list, then type a comma and add the next. E.g.: Ben — Motel / Divorce, The Revolver</div>
+  <textarea id="newHeroes" placeholder="Click tags below or type comma-separated:&#10;Ben — Motel / Divorce, The Revolver" rows="2" style="resize:none"></textarea>
+  <div class="hint" style="margin-top:var(--s1)">Click to add — separate multiple with commas:</div>
+  <div id="createTagChips" class="card-row" style="margin-top:var(--s1);gap:3px"></div>
 </div>
 <div class="field"><label for="newGens">Variants to create</label>
   <input id="newGens" value="1" type="number" min="1" max="9">
@@ -466,8 +466,9 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <div class="err" id="editInstrErr">Describe the edit first.</div>
 </div>
 <div class="field"><label for="editHeroes">Hero assets</label>
-  <input id="editHeroes" placeholder="e.g. Ben — Motel / Divorce" list="heroTagList">
-  <div class="hint">Tag heroes one at a time. Type a comma between multiple tags.</div>
+  <textarea id="editHeroes" placeholder="Click tags below or type comma-separated" rows="2" style="resize:none"></textarea>
+  <div class="hint" style="margin-top:var(--s1)">Click to add — separate multiple with commas:</div>
+  <div id="editTagChips" class="card-row" style="margin-top:var(--s1);gap:3px"></div>
 </div>
 <div class="field"><label for="editQuality">Quality</label>
   <select id="editQuality"></select>
@@ -1032,10 +1033,36 @@ async function fetchRefs(){
   renderRefs();
   renderArchive();
   renderStats();
-  // Populate hero tag datalist for create modal
-  const htl = $('heroTagList'); htl.innerHTML = '';
-  S.heroes.filter(h => !h.archived).forEach(h => {
-    const o = document.createElement('option'); o.value = h.name; htl.appendChild(o);
+  // Populate clickable hero tag chips for both modals
+  ['createTagChips','editTagChips'].forEach(chipId => {
+    const container = $(chipId);
+    if (!container) return;
+    const targetInput = chipId === 'createTagChips' ? 'newHeroes' : 'editHeroes';
+    container.innerHTML = '';
+    S.heroes.filter(h => !h.archived).forEach(h => {
+      const chip = document.createElement('span');
+      chip.style.cssText = 'display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;font-weight:600;background:var(--surface-3);color:var(--text);border:1px solid var(--border);cursor:pointer;white-space:nowrap;user-select:none;line-height:1.7';
+      chip.textContent = h.name;
+      chip.title = h.type + ' — click to add tag';
+      chip.onclick = () => {
+        const inp = $(targetInput);
+        if (!inp) return;
+        const existing = inp.value.split(',').map(t => t.trim()).filter(Boolean);
+        if (!existing.includes(h.name)) {
+          existing.push(h.name);
+          inp.value = existing.join(', ');
+        }
+        chip.style.background = 'var(--accent-dim)';
+        chip.style.borderColor = 'var(--accent)';
+        chip.style.color = 'var(--accent)';
+        setTimeout(() => {
+          chip.style.background = 'var(--surface-3)';
+          chip.style.borderColor = 'var(--border)';
+          chip.style.color = 'var(--text)';
+        }, 600);
+      };
+      container.appendChild(chip);
+    });
   });
   updateBadges();
 }
@@ -2836,33 +2863,7 @@ document.addEventListener('keydown', e => {
 
 /* ============ Init ============ */
 refreshAll();
-// Multi-tag input: datalist replaces the whole value on selection.
-// Detect selection and append with comma instead.
-function setupTagInput(inputId, datalistId){
-  const inp = $(inputId);
-  if (!inp) return;
-  let lastVal = '';
-  inp.addEventListener('input', () => {
-    const val = inp.value;
-    const dl = document.getElementById(datalistId);
-    if (!dl) return;
-    const options = [...dl.options].map(o => o.value);
-    // If the new value exactly matches an option and isn't just a prefix of the old value
-    if (options.includes(val) && lastVal && !lastVal.endsWith(val)) {
-      // Datalist selection occurred — append with comma instead of replacing
-      const commaIdx = lastVal.lastIndexOf(',');
-      if (commaIdx >= 0) {
-        inp.value = lastVal.substring(0, commaIdx + 1) + ' ' + val;
-      } else if (lastVal.trim()) {
-        inp.value = lastVal + ', ' + val;
-      }
-    }
-    lastVal = inp.value;
-  });
-}
-// Wire up on page load
-setupTagInput('newHeroes', 'heroTagList');
-setupTagInput('editHeroes', 'heroTagList');
+
 </script>
 </body>
 </html>
