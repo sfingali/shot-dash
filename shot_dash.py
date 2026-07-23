@@ -51,6 +51,13 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+# Pillow is optional — used only by the /api/thumb/ endpoints. Without it
+# they fall back to serving the full-resolution originals.
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
 # -- Config ----------------------------------------------------------------
 PORT = 8090
 
@@ -76,6 +83,12 @@ SHOTLIST_PATH = ""
 CANON_DIR = DEFAULT_CANON_DIR
 
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+# Server-side thumbnails: cached under <frames|refs dir>/_thumbs/, mirroring
+# the source tree, regenerated whenever the source file is newer.
+THUMB_DIRNAME = "_thumbs"
+FRAME_THUMB_WIDTH = 200  # grid cards + version strip
+REF_THUMB_WIDTH = 150    # reference cards
 
 # Reference archive layout inside REFS_DIR. Archived refs are moved (never
 # deleted) into _archive/; the bin is a subfolder of the archive. Nothing in
@@ -1128,14 +1141,19 @@ def autofill_shot(shot):
 
 # -- Images ----------------------------------------------------------------
 def list_images(directory):
-    """Relative POSIX-style paths of all images under directory."""
+    """Relative POSIX-style paths of all images under directory. The
+    _thumbs cache tree is excluded — thumbnails are derivatives, not
+    frames/refs of their own."""
     images = []
     base = Path(directory)
     if not base.exists():
         return images
     for p in sorted(base.rglob("*")):
         if p.is_file() and p.suffix.lower() in ALLOWED_IMAGE_EXTS:
-            images.append(p.relative_to(base).as_posix())
+            rel = p.relative_to(base)
+            if THUMB_DIRNAME in rel.parts:
+                continue
+            images.append(rel.as_posix())
     return images
 
 
@@ -1394,8 +1412,11 @@ def find_in_tree(base_dir, filename):
         return None
     if os.path.splitext(name_lower)[1] not in ALLOWED_IMAGE_EXTS:
         return None
-    for p in Path(base_dir).rglob("*"):
+    base = Path(base_dir)
+    for p in base.rglob("*"):
         if p.is_file() and p.name.lower() == name_lower:
+            if THUMB_DIRNAME in p.relative_to(base).parts:
+                continue  # never resolve to a cached thumbnail
             return str(p)
     return None
 
@@ -1408,6 +1429,43 @@ def frame_exists(filename):
     if os.path.exists(os.path.join(fd, fn)):
         return True
     return find_in_tree(fd, os.path.basename(fn)) is not None
+
+
+def make_thumbnail(src_path, base_dir, width):
+    """Return a cached width-px-wide thumbnail of src_path, generating it
+    under base_dir/_thumbs/ (mirroring the source tree) when missing or
+    stale. Falls back to src_path when Pillow is unavailable, the source is
+    already narrower than width, or the resize fails for any reason."""
+    if Image is None:
+        return src_path
+    base = os.path.realpath(base_dir)
+    rel = os.path.relpath(os.path.realpath(src_path), base)
+    if rel.startswith(".."):
+        return src_path
+    thumb = os.path.join(base, THUMB_DIRNAME, rel)
+    try:
+        if (os.path.isfile(thumb) and
+                os.path.getmtime(thumb) >= os.path.getmtime(src_path)):
+            return thumb
+        with Image.open(src_path) as im:
+            if im.width <= width:
+                return src_path
+            fmt = im.format or "PNG"
+            if fmt == "JPEG" and im.mode not in ("RGB", "L"):
+                im = im.convert("RGB")
+            elif im.mode == "P":
+                im = im.convert("RGBA")
+            h = max(1, round(im.height * width / im.width))
+            im = im.resize((width, h), Image.LANCZOS)
+            os.makedirs(os.path.dirname(thumb), exist_ok=True)
+            # unique tmp + atomic replace: concurrent requests for the same
+            # thumbnail can't serve a half-written file
+            tmp = "%s.tmp%s" % (thumb, os.urandom(4).hex())
+            im.save(tmp, format=fmt)
+            os.replace(tmp, thumb)
+        return thumb
+    except Exception:
+        return src_path
 
 
 def safe_path(base_dir, rel_path, must_exist=True):

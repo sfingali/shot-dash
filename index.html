@@ -322,7 +322,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
     <div class="viewer" id="viewer">
       <div class="viewer-left">
         <div class="viewer-frame" id="viewerFrame" title="Click for full size">
-          <img id="frameImg" alt="" style="display:none">
+          <img loading="lazy" id="frameImg" alt="" style="display:none">
           <div class="empty" id="viewerEmpty">Select a storyboard to preview it here.<br><span style="color:var(--text-faint)">Arrow keys move between storyboards &middot; press ? for all shortcuts</span></div>
           <div class="progress" id="viewerProgress"><i></i></div>
         </div>
@@ -624,7 +624,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 </div>
 
 <div class="modal" id="imageModal">
-  <img class="modal-full-img" id="fullImg" alt="">
+  <img loading="lazy" class="modal-full-img" id="fullImg" alt="">
   <div class="img-nav-hint" id="imgNavHint" style="display:none">&larr; &rarr; to navigate</div>
   <div class="img-act-bar" id="imgActBar">
     <button data-imgact="edit" title="Image-to-image edit">✎ Edit</button>
@@ -922,7 +922,7 @@ async function fetchShots(){
   for (const s of S.shots){
     const fn = s.output_file || '';
     const rel = frames[fn] || framesLower[fn.toLowerCase()];
-    s._frame_url = rel ? 'api/frame/' + encodeURIComponent(rel) : null;
+    s._frame_url = rel ? 'api/thumb/frame/' + encodeURIComponent(rel) : null;
   }
   // scene filter options (keep the current selection when still valid)
   const sf = $('sceneFilter');
@@ -1244,7 +1244,7 @@ function renderVersionStrip(s){
   try { hist = JSON.parse(s.version_history || '[]'); } catch (e) {}
   if (hist.length) {
     $('versionStrip').innerHTML = hist.map(fn =>
-      '<img src="api/frame/' + encodeURIComponent(fn) + '" title="' + escA(fn) + ' — click to make current" data-swap="' + escA(fn) + '" onerror="this.remove()">'
+      '<img loading="lazy" src="api/thumb/frame/' + encodeURIComponent(fn) + '" title="' + escA(fn) + ' — click to make current" data-swap="' + escA(fn) + '" onerror="this.remove()">'
     ).join('');
   } else {
     $('versionStrip').innerHTML = '<span class="none">No previous versions</span>';
@@ -1513,7 +1513,7 @@ function refCard(fn, opts){
   // the fixed-dimension .thumb until the IntersectionObserver hydrates it
   const media = opts.lazy
     ? '<div class="ph"></div>'
-    : '<img src="api/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '" loading="lazy">';
+    : '<img loading="lazy" src="api/thumb/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '" loading="lazy">';
   return '<div class="card"><div class="thumb"' + (opts.lazy ? ' data-lazy="' + escA(fn) + '"' : '') + '>' +
     media +
     '<div class="acts">' + acts + '</div></div>' +
@@ -1758,7 +1758,7 @@ function renderHeroPanel(){
   html += heroes.map(h => {
     const tagged = taggedShotsFor(h);
     const thumb = h.ref_image
-      ? '<img src="api/ref/' + encodeURIComponent(h.ref_image) + '" data-view="' + escA(h.ref_image) + '" onerror="this.style.display=\'none\'" alt="">'
+      ? '<img loading="lazy" src="api/thumb/ref/' + encodeURIComponent(h.ref_image) + '" data-view="' + escA(h.ref_image) + '" onerror="this.style.display=\'none\'" alt="">'
       : '';
     const shotsList = tagged.length
       ? tagged.map(s => esc(s.output_file || ('sc ' + s.scene_number))).join('<br>')
@@ -2206,7 +2206,7 @@ function renderArchive(){
   } else {
     html += '<div class="card-row">' + archivedShots.map(({s, key}) => {
       const img = s._frame_url
-        ? '<img src="' + escA(s._frame_url) + '" data-view-frame="' + escA(s._frame_url) + '" alt="">'
+        ? '<img loading="lazy" src="' + escA(s._frame_url) + '" data-view-frame="' + escA(s._frame_url) + '" alt="">'
         : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-faint)">No image</div>';
       return '<div class="card"><div class="thumb">' + img + '</div>' +
         '<div class="name">' + esc((s.output_file || 'untitled').split('/').pop()) + '</div>' +
@@ -2399,6 +2399,7 @@ const ACTIONS = {
   editRef,
   newCategory: addCategory,
   showHeroes: () => { S.refView = S.refView === 'heroes' ? 'refs' : 'heroes'; renderRefs(); },
+  showDescriptions: () => { S.refView = S.refView === 'descriptions' ? 'refs' : 'descriptions'; renderRefs(); },
   heroNew: () => openHeroModal(null),
   heroSave: saveHero,
   newProject: () => {
