@@ -1231,7 +1231,7 @@ function selectShot(key, keepScroll){
 }
 $('viewerFrame').addEventListener('click', () => {
   const found = S.selectedKey && shotByKey(S.selectedKey);
-  if (found && found.shot._frame_url) openImageModal(found.shot._frame_url);
+  if (found && found.shot._frame_url) openImageModal(found.shot._frame_url.replace("/thumb/", "/"));
 });
 $('viewerInfo').addEventListener('click', e => {
   const el = e.target.closest('.editable');
@@ -1572,7 +1572,7 @@ function refLazyHydrate(thumb){
   if (!fn) return;
   thumb.removeAttribute('data-lazy');
   const img = document.createElement('img');
-  img.src = 'api/ref/' + encodeURIComponent(fn);
+  img.src = 'api/thumb/ref/' + encodeURIComponent(fn);
   img.title = fn;
   img.setAttribute('data-view', fn);
   img.loading = 'lazy';
