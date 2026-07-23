@@ -1897,7 +1897,7 @@ async function massRegen(id){
   const h = heroById(id);
   const tagged = h ? taggedShotsFor(h) : [];
   const withFrames = tagged.filter(s => s._frame_url).length;
-  if (!await confirmDlg('Mass-regenerate ' + withFrames + ' rendered frame' + (withFrames === 1 ? '' : 's') +
+  if (!await confirmDlg('Mass-replace ' + withFrames + ' rendered frame' + (withFrames === 1 ? '' : 's') +
       ' tagged with "' + (h ? h.name : id) + '"? Each is an image-to-image edit (1–3 min per frame); old versions are kept in history.', 'Start')) return;
   try {
     const d = await api('api/mass_regen', {hero_id: id});
@@ -1927,6 +1927,7 @@ function renderDescPanel(){
     '</div>' +
     '<div style="margin-bottom:var(--s3);display:flex;gap:var(--s2);align-items:center">' +
     '<button class="btn btn-accent" data-act="heroNew">+ New hero asset</button>' +
+    '<button class="btn" data-act="genFromHeroDesc">&#127916; Generate</button>' +
     '<span class="count">Canonical text descriptions injected into storyboard prompts. Click any field to edit — saves on blur, Esc cancels.</span>' +
     '</div>';
   if (!heroes.length){
