@@ -111,6 +111,18 @@ EDIT_SUFFIX = (". Keep everything else the same: composition, lighting, "
                "palette, mood. Photorealistic cinematic still from an indie "
                "horror film. No text, no watermark, no logos.")
 
+# Vision model used by /api/describe_ref (reference image -> text).
+VISION_MODEL = "gpt-4o"
+VISION_URL = "https://api.openai.com/v1/chat/completions"
+DESCRIBE_PROMPT = (
+    "Describe this image in precise visual detail so the description could "
+    "be dropped into an image-generation prompt and reproduce the subject "
+    "faithfully. Cover: the main subject and its exact appearance (shape, "
+    "materials, textures, wear, distinguishing details), colors (specific "
+    "shades), lighting, and setting/background. Write 1-2 dense paragraphs "
+    "of plain prose. No preamble, no lists, no meta-commentary about the "
+    "image being a photo or render.")
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 HTML_PATH = os.path.join(SCRIPT_DIR, "index.html")
 PROJECTS_DIR = os.path.join(SCRIPT_DIR, "projects")
@@ -1450,7 +1462,7 @@ def require_openai_key():
     return key
 
 
-def _openai_call(req, timeout):
+def _openai_call(req, timeout, label="GPT Image 2"):
     try:
         return json.loads(urllib.request.urlopen(req, timeout=timeout).read())
     except urllib.error.HTTPError as e:
@@ -1459,7 +1471,7 @@ def _openai_call(req, timeout):
             detail = e.read().decode(errors="replace")[:300]
         except Exception:
             pass
-        raise ApiError("GPT Image 2 error (HTTP %d): %s" % (e.code, detail), 400)
+        raise ApiError("%s error (HTTP %d): %s" % (label, e.code, detail), 400)
     except urllib.error.URLError as e:
         raise ApiError("Could not reach the OpenAI API: %s" % e.reason, 502)
     except (TimeoutError, OSError) as e:
@@ -1522,6 +1534,35 @@ def openai_edit_image(source_bytes, prompt, key, quality=None, model=None):
         headers={"Authorization": "Bearer " + key,
                  "Content-Type": "multipart/form-data; boundary=" + boundary})
     return _extract_image_bytes(_openai_call(req, 180))
+
+
+def openai_describe_image(img_bytes, mime, key):
+    """Image -> text via the vision chat model. Returns the description."""
+    data_url = "data:%s;base64,%s" % (mime,
+                                      base64.b64encode(img_bytes).decode())
+    body = json.dumps({
+        "model": VISION_MODEL,
+        "max_tokens": 600,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": DESCRIBE_PROMPT},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ],
+        }],
+    }).encode()
+    req = urllib.request.Request(
+        VISION_URL, data=body,
+        headers={"Authorization": "Bearer " + key,
+                 "Content-Type": "application/json"})
+    resp = _openai_call(req, 120, label="GPT-4o")
+    try:
+        text = (resp["choices"][0]["message"]["content"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        raise ApiError("Unrecognized response from GPT-4o", 502)
+    if not text:
+        raise ApiError("GPT-4o returned an empty description", 502)
+    return text
 
 
 # -- Versioning ------------------------------------------------------------
@@ -1633,7 +1674,7 @@ def _commit_edit(old_file, img_bytes, edit_prompt, quality=None):
 # Generate/edit calls hold a worker thread for up to 3 minutes each; a
 # per-IP semaphore caps how many can be in flight at once (503 beyond that).
 THROTTLED_ROUTES = {"/api/generate", "/api/edit", "/api/generate_ref",
-                    "/api/ref_edit", "/api/mass_regen"}
+                    "/api/ref_edit", "/api/mass_regen", "/api/describe_ref"}
 _GEN_SEMS = {}
 _GEN_SEMS_LOCK = threading.Lock()
 
@@ -2319,6 +2360,26 @@ class Handler(BaseHTTPRequestHandler):
             files.append((rel_dir + "/" if rel_dir else "") + fname)
         self._json({"ok": True, "files": files, "file": files[0]})
 
+    def api_describe_ref(self, data):
+        """Reference image -> textual description via GPT-4o vision. The
+        result is returned for the client to copy or save onto a hero
+        asset's canonical description."""
+        rel = (data.get("file") or "").strip()
+        if not rel:
+            raise ApiError("Missing file")
+        filepath = safe_path(refs_dir(), rel)
+        if not filepath:
+            raise ApiError("Reference not found: " + rel, 404)
+        key = require_openai_key()
+        with open(filepath, "rb") as f:
+            img_bytes = f.read()
+        ext = os.path.splitext(filepath)[1].lower()
+        mime = CT.get(ext.lstrip(".")) if ext in ALLOWED_IMAGE_EXTS else None
+        description = openai_describe_image(img_bytes, mime or "image/png",
+                                            key)
+        self._json({"ok": True, "file": rel, "description": description,
+                    "model": VISION_MODEL})
+
     # - shot duplication -
     def api_duplicate(self, data):
         """Copy a shot row under a new unique output_file; the frame file
@@ -2758,6 +2819,7 @@ Handler.POST_ROUTES = {
     "/api/ref_restore": Handler.api_ref_restore,
     "/api/ref_move": Handler.api_ref_move,
     "/api/ref_edit": Handler.api_ref_edit,
+    "/api/describe_ref": Handler.api_describe_ref,
     "/api/category_add": Handler.api_category_add,
     "/api/duplicate": Handler.api_duplicate,
     "/api/mass_regen": Handler.api_mass_regen,

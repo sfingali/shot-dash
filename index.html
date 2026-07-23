@@ -180,6 +180,23 @@ details.bin summary:hover{color:var(--text)}
 .hero-card .h-acts{display:flex;gap:var(--s1);flex-wrap:wrap}
 .hero-card .h-acts .btn{font-size:11px;padding:3px 8px}
 
+/* ============ Descriptions panel ============ */
+.desc-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);padding:var(--s3);margin-bottom:var(--s3);max-width:760px}
+.desc-card .d-head{display:flex;align-items:baseline;gap:var(--s2);margin-bottom:var(--s2)}
+.desc-card .d-head .h-name{font-weight:700;font-size:13px}
+.desc-card .d-head .h-type{font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.08em}
+.desc-card .row{display:flex;gap:var(--s3);margin-bottom:var(--s2);font-size:12px;line-height:1.5}
+.desc-card .label{color:var(--text-faint);font-weight:600;min-width:88px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;padding-top:2px}
+.desc-card .d-val{flex:1;min-width:0;cursor:text;border-bottom:1px dashed var(--border-strong);white-space:pre-wrap;word-break:break-word}
+.desc-card .d-val:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.desc-card .d-val.faint{color:var(--text-faint)}
+.d-inp{width:100%;background:var(--surface-3);border:1px solid var(--accent);color:var(--text);font:inherit;font-size:12px;padding:2px 4px;border-radius:2px}
+textarea.d-inp{min-height:64px;resize:vertical}
+
+/* ============ Describe modal ============ */
+#describeLoading{display:flex;align-items:center;gap:var(--s3);color:var(--text-dim);padding:var(--s3) 0}
+.mini-spin{width:22px;height:22px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--accent);border-radius:50%;animation:spin .9s linear infinite;flex-shrink:0}
+
 /* ============ Modals ============ */
 .modal{display:none;position:fixed;inset:0;background:rgba(5,6,7,.85);z-index:100;align-items:center;justify-content:center}
 .modal.open{display:flex}
@@ -346,6 +363,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
         <button class="btn btn-accent" data-act="refGen">+ New reference</button>
         <button class="btn" data-act="newCategory" title="Add a category to the tree">+ Category</button>
         <button class="btn" data-act="showHeroes" id="heroBtn">&#9733; Hero Assets <span class="n" id="heroCount"></span></button>
+        <button class="btn" data-act="showDescriptions" id="descBtn" title="Canonical text descriptions injected into storyboard prompts">&#128221; Descriptions</button>
         <span class="spacer"></span>
         <span class="count" id="refCount2"></span>
       </div>
@@ -610,11 +628,29 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <div class="img-nav-hint" id="imgNavHint" style="display:none">&larr; &rarr; to navigate</div>
   <div class="img-act-bar" id="imgActBar">
     <button data-imgact="edit" title="Image-to-image edit">✎ Edit</button>
+    <button data-imgact="describe" title="Describe with GPT-4o vision">📋 Describe</button>
     <button data-imgact="move" title="Move to another category">→ Move</button>
     <button data-imgact="arch" title="Archive">⬇ Archive</button>
     <button class="del" data-imgact="bin" title="Move to bin">× Bin</button>
     <button data-imgact="restore" title="Restore">↩ Restore</button>
   </div>
+</div>
+
+<div class="modal" id="describeModal">
+<div class="modal-inner">
+<h3>&#128203; Image description</h3>
+<div class="field"><div class="mono" id="describeFile" style="color:var(--text-dim)"></div></div>
+<div id="describeLoading"><div class="mini-spin" aria-hidden="true"></div><span>Describing with GPT-4o vision&hellip;</span></div>
+<div class="field" id="describeResult" style="display:none">
+  <textarea id="describeText" style="min-height:140px"></textarea>
+  <div class="hint">Edit freely before copying — nothing is saved until you copy it somewhere.</div>
+</div>
+<div class="modal-foot">
+  <button class="btn" data-act="close" data-modal="describeModal">Close</button>
+  <button class="btn" id="describeCopyBtn" data-act="describeCopy" disabled>Copy</button>
+  <button class="btn btn-accent" id="describeHeroBtn" data-act="describeToHero" disabled title="Open the hero asset form pre-filled with this description">Copy to hero asset</button>
+</div>
+</div>
 </div>
 
 <div id="toasts"></div>
@@ -1468,6 +1504,7 @@ function refCard(fn, opts){
     acts = '<button data-refrestore="' + escA(fn) + '" title="Restore">↩</button>';
   } else {
     acts = '<button data-edit="' + escA(fn) + '" title="Image-to-image edit">✎</button>' +
+      '<button data-desc="' + escA(fn) + '" title="Describe with GPT-4o vision">📋</button>' +
       '<button data-move="' + escA(fn) + '" title="Move to another category">→</button>' +
       '<button data-arch="' + escA(fn) + '" title="Archive">⬇</button>' +
       '<button class="del" data-del="' + escA(fn) + '" title="Move to bin">×</button>';
@@ -1488,7 +1525,9 @@ function renderRefs(){
   renderRefTree();
   refLazyReset();
   $('heroBtn').classList.toggle('btn-accent', S.refView === 'heroes');
+  $('descBtn').classList.toggle('btn-accent', S.refView === 'descriptions');
   if (S.refView === 'heroes'){ renderHeroPanel(); return; }
+  if (S.refView === 'descriptions'){ renderDescPanel(); return; }
   const q = ($('refSearch').value || '').toLowerCase();
   const sel = S.refSelCat;
   const cats = Object.keys(S.refCats).sort();
@@ -1563,6 +1602,8 @@ $('refsGrid').addEventListener('click', async e => {
   const restore = e.target.closest('[data-refrestore]');
   const move = e.target.closest('[data-move]');
   const edit = e.target.closest('[data-edit]');
+  const desc = e.target.closest('[data-desc]');
+  const dval = e.target.closest('[data-dfield]');
   const view = e.target.closest('[data-view]');
   const hedit = e.target.closest('[data-hedit]');
   const hdel = e.target.closest('[data-hdel]');
@@ -1592,6 +1633,10 @@ $('refsGrid').addEventListener('click', async e => {
       fetchRefs();
     } else if (edit){
       showRefEdit(edit.getAttribute('data-edit'));
+    } else if (desc){
+      describeRef(desc.getAttribute('data-desc'));
+    } else if (dval){
+      startDescEdit(dval);
     } else if (hedit){
       openHeroModal(hedit.getAttribute('data-hedit'));
     } else if (hdel){
@@ -1819,6 +1864,132 @@ async function massRegen(id){
     toast('Mass regen queued: ' + d.count + ' storyboard' + (d.count === 1 ? '' : 's'));
     trackJob(d.job_id, 'Mass regen: ' + (d.hero || id));
   } catch (e){ toast(e.message, {error: true}); }
+}
+
+/* ============ Descriptions panel (textual hero-asset fields) ============ */
+const DESC_FIELDS = ['name','type','description','breakdown','colors','notes'];
+const HERO_TYPES = ['prop','character','wardrobe','vehicle','location','set-dressing','other'];
+function descField(h, field){
+  const v = h[field] || '';
+  return '<div class="row"><span class="label">' + esc(field) + '</span>' +
+    '<span class="d-val' + (v ? '' : ' faint') + '" data-dhero="' + escA(h.id) + '" data-dfield="' + escA(field) + '" title="Click to edit">' +
+    (v ? esc(v) : '—') + '</span></div>';
+}
+function renderDescPanel(){
+  const heroes = S.heroes.filter(h => !h.archived);
+  let html = '<div class="ref-cat"><h3>Descriptions<span class="n">' + heroes.length + '</span></h3>' +
+    '<div style="margin-bottom:var(--s3);display:flex;gap:var(--s2);align-items:center">' +
+    '<button class="btn btn-accent" data-act="heroNew">+ New hero asset</button>' +
+    '<span class="count">Canonical text descriptions injected into storyboard prompts. Click any field to edit — saves on blur, Esc cancels.</span>' +
+    '</div>';
+  if (!heroes.length){
+    html += '<div class="empty-state"><div class="big">No hero assets yet</div>' +
+      'Descriptions live on hero assets — create one, or use the 📋 button on a reference image to draft one with GPT-4o vision.</div></div>';
+    $('refsGrid').innerHTML = html;
+    $('refCount2').textContent = '';
+    return;
+  }
+  html += heroes.map(h =>
+    '<div class="desc-card">' +
+    '<div class="d-head"><span class="h-name">' + esc(h.name) + '</span>' +
+    '<span class="h-type">' + esc(h.type || 'asset') + ' · ' + esc(h.id) + '</span></div>' +
+    DESC_FIELDS.map(f => descField(h, f)).join('') +
+    '</div>').join('');
+  html += '</div>';
+  $('refsGrid').innerHTML = html;
+  $('refCount2').textContent = heroes.length + ' hero asset' + (heroes.length === 1 ? '' : 's');
+}
+function startDescEdit(el){
+  if (el.querySelector('input,textarea,select')) return;   // already editing
+  const id = el.getAttribute('data-dhero');
+  const field = el.getAttribute('data-dfield');
+  const h = heroById(id);
+  if (!h) return;
+  const cur = h[field] || '';
+  let inp;
+  if (field === 'type'){
+    inp = document.createElement('select');
+    HERO_TYPES.forEach(t => {
+      const o = document.createElement('option'); o.value = t; o.textContent = t; inp.appendChild(o);
+    });
+    inp.value = HERO_TYPES.includes(cur) ? cur : 'prop';
+  } else if (field === 'description' || field === 'breakdown' || field === 'notes'){
+    inp = document.createElement('textarea');
+    inp.value = cur;
+  } else {
+    inp = document.createElement('input');
+    inp.value = cur;
+  }
+  inp.className = 'd-inp';
+  el.textContent = '';
+  el.appendChild(inp);
+  inp.focus();
+  if (inp.select) inp.select();
+  let done = false;
+  // Same safe-restore pattern as the shotlist cell editor: never rebuild the
+  // panel while the focused input is still in the DOM.
+  const restore = (val) => {
+    inp.removeEventListener('blur', commit);
+    if (inp.parentNode === el) el.removeChild(inp);
+    el.textContent = val || '—';
+    el.classList.toggle('faint', !val);
+  };
+  const cancel = () => {
+    if (done) return;
+    done = true;
+    restore(cur);
+  };
+  const commit = async () => {
+    if (done) return;
+    done = true;
+    inp.removeEventListener('blur', commit);
+    if (!document.contains(inp)) return;   // a re-render replaced the panel
+    const v = inp.value.trim();
+    if (v === cur){ restore(cur); return; }
+    if (field === 'name' && !v){ restore(cur); toast('A name is required', {error: true}); return; }
+    restore(v); // optimistic
+    try {
+      await api('/api/hero_update', {id, field, value: v});
+      h[field] = v;
+      toast(field + ' saved');
+      renderRefs();   // name/type also appear in the card header
+    } catch (err){
+      toast(err.message, {error: true});
+      renderRefs();
+    }
+  };
+  inp.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && inp.tagName !== 'TEXTAREA'){ ev.preventDefault(); inp.blur(); }
+    else if (ev.key === 'Escape'){ ev.stopPropagation(); cancel(); }
+  });
+  if (inp.tagName === 'SELECT') inp.addEventListener('change', () => inp.blur());
+  inp.addEventListener('blur', commit);
+}
+
+/* ============ Describe (GPT-4o vision on a reference image) ============ */
+let describeCurFile = null;
+async function describeRef(fn){
+  describeCurFile = fn;
+  $('describeFile').textContent = fn;
+  $('describeLoading').style.display = 'flex';
+  $('describeResult').style.display = 'none';
+  $('describeText').value = '';
+  $('describeCopyBtn').disabled = true;
+  $('describeHeroBtn').disabled = true;
+  openModal('describeModal');
+  try {
+    const d = await api('/api/describe_ref', {file: fn});
+    // stale if the modal was closed or another describe started meanwhile
+    if (describeCurFile !== fn || !$('describeModal').classList.contains('open')) return;
+    $('describeLoading').style.display = 'none';
+    $('describeResult').style.display = 'block';
+    $('describeText').value = d.description || '';
+    $('describeCopyBtn').disabled = false;
+    $('describeHeroBtn').disabled = false;
+  } catch (e){
+    if (describeCurFile === fn) closeModal('describeModal');
+    toast(e.message, {error: true});
+  }
 }
 </script>
 <script>
@@ -2159,6 +2330,8 @@ $('imgActBar').addEventListener('click', async e => {
     if (act === 'edit'){
       closeModal('imageModal');
       showRefEdit(fn);
+    } else if (act === 'describe'){
+      describeRef(fn);   // describeModal sits after imageModal in the DOM, so it stacks on top
     } else if (act === 'move'){
       const cat = prompt('Move ' + fn.split('/').pop() + ' to category:', fn.includes('/') ? fn.split('/').slice(0, -1).join('/') : '');
       if (!cat) return;
