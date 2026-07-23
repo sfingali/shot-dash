@@ -87,8 +87,12 @@ ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 # Server-side thumbnails: cached under <frames|refs dir>/_thumbs/, mirroring
 # the source tree, regenerated whenever the source file is newer.
 THUMB_DIRNAME = "_thumbs"
-FRAME_THUMB_WIDTH = 200  # grid cards + version strip
-REF_THUMB_WIDTH = 150    # reference cards
+FRAME_THUMB_WIDTH = 200    # grid cards + version strip
+REF_THUMB_WIDTH = 150      # reference cards
+FRAME_PREVIEW_WIDTH = 600  # viewer panel preview (/api/preview/frame/)
+# Previews cache under _thumbs/_preview/ so the existing THUMB_DIRNAME
+# exclusion in list_images/find_in_tree covers them too.
+PREVIEW_DIRNAME = os.path.join(THUMB_DIRNAME, "_preview")
 
 # Reference archive layout inside REFS_DIR. Archived refs are moved (never
 # deleted) into _archive/; the bin is a subfolder of the archive. Nothing in
@@ -1431,18 +1435,20 @@ def frame_exists(filename):
     return find_in_tree(fd, os.path.basename(fn)) is not None
 
 
-def make_thumbnail(src_path, base_dir, width):
+def make_thumbnail(src_path, base_dir, width, cache_dirname=THUMB_DIRNAME):
     """Return a cached width-px-wide thumbnail of src_path, generating it
-    under base_dir/_thumbs/ (mirroring the source tree) when missing or
-    stale. Falls back to src_path when Pillow is unavailable, the source is
-    already narrower than width, or the resize fails for any reason."""
+    under base_dir/<cache_dirname>/ (mirroring the source tree) when missing
+    or stale. Different widths must use different cache_dirnames so they
+    don't overwrite each other. Falls back to src_path when Pillow is
+    unavailable, the source is already narrower than width, or the resize
+    fails for any reason."""
     if Image is None:
         return src_path
     base = os.path.realpath(base_dir)
     rel = os.path.relpath(os.path.realpath(src_path), base)
     if rel.startswith(".."):
         return src_path
-    thumb = os.path.join(base, THUMB_DIRNAME, rel)
+    thumb = os.path.join(base, cache_dirname, rel)
     try:
         if (os.path.isfile(thumb) and
                 os.path.getmtime(thumb) >= os.path.getmtime(src_path)):
@@ -1944,6 +1950,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._serve_image(make_thumbnail(filepath, refs_dir(), 150))
             else:
                 self._error("Reference not found: " + rel, 404)
+
+        elif path.startswith("/api/preview/frame/"):
+            rel = urllib.parse.unquote(path[len("/api/preview/frame/"):])
+            filepath = safe_path(frames_dir(), rel)
+            if not filepath:
+                filepath = find_in_tree(frames_dir(), os.path.basename(rel))
+            if filepath:
+                self._serve_image(make_thumbnail(
+                    filepath, frames_dir(), FRAME_PREVIEW_WIDTH,
+                    cache_dirname=PREVIEW_DIRNAME))
+            else:
+                self._error("Frame not found: " + rel, 404)
 
         elif path.startswith("/api/frame/"):
             rel = urllib.parse.unquote(path[len("/api/frame/"):])

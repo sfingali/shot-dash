@@ -922,7 +922,9 @@ async function fetchShots(){
   for (const s of S.shots){
     const fn = s.output_file || '';
     const rel = frames[fn] || framesLower[fn.toLowerCase()];
-    s._frame_url = rel ? 'api/thumb/frame/' + encodeURIComponent(rel) : null;
+    s._frame_url = rel ? 'api/thumb/frame/' + encodeURIComponent(rel) : null;      // 200px — grid + version strip
+    s._preview_url = rel ? 'api/preview/frame/' + encodeURIComponent(rel) : null;  // 600px — viewer panel
+    s._full_url = rel ? 'api/frame/' + encodeURIComponent(rel) : null;             // original — lightbox
   }
   // scene filter options (keep the current selection when still valid)
   const sf = $('sceneFilter');
@@ -1192,7 +1194,7 @@ function selectShot(key, keepScroll){
   const s = found.shot;
   const img = $('frameImg');
   if (s._frame_url){
-    img.src = s._frame_url; img.style.display = 'block';
+    img.src = s._preview_url; img.style.display = 'block';
     $('viewerEmpty').style.display = 'none';
   } else {
     img.style.display = 'none'; img.src = '';
@@ -1231,7 +1233,7 @@ function selectShot(key, keepScroll){
 }
 $('viewerFrame').addEventListener('click', () => {
   const found = S.selectedKey && shotByKey(S.selectedKey);
-  if (found && found.shot._frame_url) openImageModal(found.shot._frame_url.replace("/thumb/", "/"));
+  if (found && found.shot._full_url) openImageModal(found.shot._full_url, null, S.selectedKey);
 });
 $('viewerInfo').addEventListener('click', e => {
   const el = e.target.closest('.editable');
@@ -2264,10 +2266,13 @@ document.querySelectorAll('.modal').forEach(m => {
 });
 $('fullImg').addEventListener('click', () => closeModal('imageModal'));
 
-/* Full-size image viewer — arrow-key navigation for reference images.
-   refNavList holds the ref files visible under the current category/filter
-   (same order as renderRefs); null when the open image isn't navigable. */
+/* Full-size image viewer — arrow-key navigation for reference images and
+   storyboards. refNavList holds the ref files visible under the current
+   category/filter (same order as renderRefs); shotNavList holds the keys of
+   currently displayed storyboards that have a frame (same order as the
+   grid). At most one list is active; both null when not navigable. */
 let refNavList = null, refNavIdx = -1;
+let shotNavList = null, shotNavIdx = -1;
 let imgModalFile = null, imgBarTimer = null;
 function visibleRefFiles(){
   const q = ($('refSearch').value || '').toLowerCase();
@@ -2281,12 +2286,22 @@ function visibleRefFiles(){
   }
   return files;
 }
-function openImageModal(src, refFile){
+function visibleShotFrames(){
+  return S.displayedKeys.filter(k => {
+    const found = shotByKey(k);
+    return found && found.shot._full_url;
+  });
+}
+function openImageModal(src, refFile, shotKey){
   refNavList = refFile ? visibleRefFiles() : null;
   refNavIdx = refNavList ? refNavList.indexOf(refFile) : -1;
-  const canNav = !!(refNavList && refNavIdx >= 0 && refNavList.length > 1);
-  if (!canNav){ refNavList = null; refNavIdx = -1; }
-  $('imgNavHint').style.display = canNav ? '' : 'none';
+  const canNavRef = !!(refNavList && refNavIdx >= 0 && refNavList.length > 1);
+  if (!canNavRef){ refNavList = null; refNavIdx = -1; }
+  shotNavList = shotKey ? visibleShotFrames() : null;
+  shotNavIdx = shotNavList ? shotNavList.indexOf(shotKey) : -1;
+  const canNavShot = !!(shotNavList && shotNavIdx >= 0 && shotNavList.length > 1);
+  if (!canNavShot){ shotNavList = null; shotNavIdx = -1; }
+  $('imgNavHint').style.display = (canNavRef || canNavShot) ? '' : 'none';
   imgModalFile = refFile || null;
   clearTimeout(imgBarTimer);
   $('imgActBar').classList.remove('on');
@@ -2298,6 +2313,12 @@ function refNav(dir){
   refNavIdx = (refNavIdx + dir + refNavList.length) % refNavList.length;   // wraps
   imgModalFile = refNavList[refNavIdx];
   $('fullImg').src = 'api/ref/' + encodeURIComponent(imgModalFile);
+}
+function shotNav(dir){
+  if (!shotNavList) return;
+  shotNavIdx = (shotNavIdx + dir + shotNavList.length) % shotNavList.length;   // wraps
+  const found = shotByKey(shotNavList[shotNavIdx]);
+  if (found) $('fullImg').src = found.shot._full_url;
 }
 
 /* Viewer action bar — same actions as the thumbnail cards. Shown on hover
@@ -2459,7 +2480,9 @@ document.addEventListener('keydown', e => {
   }
   if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && $('imageModal').classList.contains('open')){
     e.preventDefault();
-    refNav(e.key === 'ArrowRight' ? 1 : -1);
+    const dir = e.key === 'ArrowRight' ? 1 : -1;
+    refNav(dir);
+    shotNav(dir);
     return;
   }
   const tag = document.activeElement && document.activeElement.tagName;
