@@ -802,7 +802,7 @@ function trackJob(jobId, label){
   $('jobs').appendChild(chip);
   const poll = async () => {
     let j;
-    try { j = await api('/api/job_status?id=' + encodeURIComponent(jobId)); }
+    try { j = await api('api/job_status?id=' + encodeURIComponent(jobId)); }
     catch (e){ chip.remove(); toast(e.message, {error: true}); return; }
     chip.querySelector('.t').textContent = j.done + '/' + j.total;
     if (j.status === 'running'){ setTimeout(poll, 2500); return; }
@@ -832,7 +832,7 @@ function switchTab(t){
 
 /* ============ Data ============ */
 async function fetchProjects(){
-  const d = await api('/api/projects');
+  const d = await api('api/projects');
   S.projects = d.projects || [];
   S.settings = d.settings || {};
   const sel = $('projectSel');
@@ -859,7 +859,7 @@ async function fetchProjects(){
 }
 async function fetchCanon(){
   try {
-    const d = await api('/api/canon');
+    const d = await api('api/canon');
     S.canonScenes = d.scenes || [];
   } catch (e){ S.canonScenes = []; }
   const dl = $('canonSceneList'); dl.innerHTML = '';
@@ -916,13 +916,13 @@ function updateRefEditCost(){
     : '';
 }
 async function fetchShots(){
-  const [shotsRes, framesRes] = await Promise.all([api('/api/shots'), api('/api/frames')]);
+  const [shotsRes, framesRes] = await Promise.all([api('api/shots'), api('api/frames')]);
   S.shots = shotsRes.shots || [];
   const frames = framesRes.frames || {}, framesLower = framesRes.frames_lower || {};
   for (const s of S.shots){
     const fn = s.output_file || '';
     const rel = frames[fn] || framesLower[fn.toLowerCase()];
-    s._frame_url = rel ? '/api/frame/' + encodeURIComponent(rel) : null;
+    s._frame_url = rel ? 'api/frame/' + encodeURIComponent(rel) : null;
   }
   // scene filter options (keep the current selection when still valid)
   const sf = $('sceneFilter');
@@ -940,7 +940,7 @@ async function fetchShots(){
 }
 async function fetchRefs(){
   const [refs, arch, cats, heroes] = await Promise.all([
-    api('/api/refs'), api('/api/archived_refs'), api('/api/categories'), api('/api/heroes')]);
+    api('api/refs'), api('api/archived_refs'), api('api/categories'), api('api/heroes')]);
   S.refCats = refs.categories || {};
   S.archRefs = arch.archived || [];
   S.binRefs = arch.binned || [];
@@ -962,7 +962,7 @@ async function fetchRefs(){
   updateBadges();
 }
 async function fetchShotlist(){
-  const d = await api('/api/shotlist');
+  const d = await api('api/shotlist');
   S.shotlist = d.rows || [];
   S.slCols = d.columns || [];
   renderShotlist();
@@ -1004,7 +1004,7 @@ function updateBadges(){
 /* ============ Project actions ============ */
 async function switchProject(name){
   try {
-    await api('/api/project_switch', {name});
+    await api('api/project_switch', {name});
     S.selectedKey = null; S.refSelCat = 'uncategorized'; S.refView = 'refs'; S.treeOpen.clear();
     clearViewer();
     await refreshAll();
@@ -1019,7 +1019,7 @@ async function createProject(){
     return;
   }
   try {
-    const d = await api('/api/project_create', {name});
+    const d = await api('api/project_create', {name});
     closeModal('projectModal');
     $('projName').value = '';
     S.selectedKey = null; S.refSelCat = 'uncategorized'; S.refView = 'refs'; S.treeOpen.clear();
@@ -1030,7 +1030,7 @@ async function createProject(){
 }
 async function saveSetting(field, value){
   try {
-    await api('/api/project_update', {field, value});
+    await api('api/project_update', {field, value});
     S.settings[field] = value;
     if (field === 'quality') fillQualitySelects();
     toast(field + ' → ' + value);
@@ -1160,7 +1160,7 @@ $('grid').addEventListener('drop', async e => {
   // numbers the subset already owned); unfiltered → global renumbering.
   const filtered = !!(($('search').value || '').trim() || $('statusFilter').value || $('sceneFilter').value);
   try {
-    await api(filtered ? '/api/reorder' : '/api/reorder_all', {order: files});
+    await api(filtered ? 'api/reorder' : 'api/reorder_all', {order: files});
     S.sortCol = 'shot_number'; S.sortDir = 1;
     await refreshData();
     toast('Order saved');
@@ -1244,7 +1244,7 @@ function renderVersionStrip(s){
   try { hist = JSON.parse(s.version_history || '[]'); } catch (e) {}
   if (hist.length) {
     $('versionStrip').innerHTML = hist.map(fn =>
-      '<img src="/api/frame/' + encodeURIComponent(fn) + '" title="' + escA(fn) + ' — click to make current" data-swap="' + escA(fn) + '" onerror="this.remove()">'
+      '<img src="api/frame/' + encodeURIComponent(fn) + '" title="' + escA(fn) + ' — click to make current" data-swap="' + escA(fn) + '" onerror="this.remove()">'
     ).join('');
   } else {
     $('versionStrip').innerHTML = '<span class="none">No previous versions</span>';
@@ -1256,7 +1256,7 @@ $('versionStrip').addEventListener('click', async e => {
   const p = payloadFor(S.selectedKey);
   if (!p) return;
   try {
-    const d = await api('/api/swap_version', Object.assign({swap_file: el.getAttribute('data-swap')}, p));
+    const d = await api('api/swap_version', Object.assign({swap_file: el.getAttribute('data-swap')}, p));
     S.selectedKey = d.current;
     toast('Now showing ' + d.current);
     refreshData();
@@ -1270,7 +1270,7 @@ async function setStatus(st){
   const p = payloadFor(S.selectedKey);
   if (!p) return;
   try {
-    await api('/api/update', Object.assign({field: 'status', value: st}, p));
+    await api('api/update', Object.assign({field: 'status', value: st}, p));
     toast('Status → ' + st);
     refreshData();
   } catch (e){ toast(e.message, {error: true}); }
@@ -1286,7 +1286,7 @@ async function generateShot(){
   const quality = $('genQualitySel').value;   // '' = project default
   const end = startJob(label, key);
   try {
-    const d = await api('/api/generate', quality ? Object.assign({quality}, p) : p);
+    const d = await api('api/generate', quality ? Object.assign({quality}, p) : p);
     S.selectedKey = d.output_file;   // identity moves to the new version
     toast('Generated ' + d.output_file + ' (v' + d.version + ', ' + d.size_kb + ' KB)');
     await refreshData();
@@ -1319,7 +1319,7 @@ async function editShot(){
   try {
     const body = Object.assign({edit_instructions: instr}, p);
     if (quality) body.quality = quality;
-    const d = await api('/api/edit', body);
+    const d = await api('api/edit', body);
     S.selectedKey = d.output_file;
     toast('Edited → ' + d.output_file + ' (v' + d.version + ')');
     await refreshData();
@@ -1333,7 +1333,7 @@ async function archiveShot(){
   const found = shotByKey(S.selectedKey);
   if (!p || !found) return;
   try {
-    const d = await api('/api/archive', p);
+    const d = await api('api/archive', p);
     const file = found.shot.output_file || '';
     clearViewer();
     await refreshData();
@@ -1341,7 +1341,7 @@ async function archiveShot(){
       actionLabel: 'Undo',
       onAction: async () => {
         try {
-          await api('/api/unarchive', Object.assign({restore_status: d.previous_status}, p));
+          await api('api/unarchive', Object.assign({restore_status: d.previous_status}, p));
           await refreshData();
           if (file) selectShot(file);
         } catch (e){ toast(e.message, {error: true}); }
@@ -1354,7 +1354,7 @@ async function duplicateShot(){
   const p = payloadFor(S.selectedKey);
   if (!p) return;
   try {
-    const d = await api('/api/duplicate', p);
+    const d = await api('api/duplicate', p);
     toast('Duplicated → ' + (d.row.output_file || 'new row'));
     await refreshData();
     if (d.row.output_file) selectShot(d.row.output_file);
@@ -1396,7 +1396,7 @@ async function createShot(){
     let firstFile = null;
     for (let g = 0; g < gens; g++){
       const fn = g === 0 ? fname : fname.replace(/(_v\d+)?(\.[^.]+)$/, '') + '_alt' + (g + 1) + '_v1.png';
-      const d = await api('/api/create', {scene_number: sc, output_file: fn, lens, verbatim_instructions: instr, status});
+      const d = await api('api/create', {scene_number: sc, output_file: fn, lens, verbatim_instructions: instr, status});
       if (!firstFile) firstFile = d.row && d.row.output_file;
     }
     toast(gens > 1 ? 'Created ' + gens + ' storyboards' : 'Storyboard created');
@@ -1425,7 +1425,7 @@ async function saveFieldEdit(){
   const p = payloadFor(key);
   if (!p){ S.fieldEdit = null; closeModal('fieldModal'); return; }
   try {
-    await api('/api/edit_text', Object.assign({field, value: $('fieldModalText').value}, p));
+    await api('api/edit_text', Object.assign({field, value: $('fieldModalText').value}, p));
     S.fieldEdit = null;
     closeModal('fieldModal');
     toast('Saved');
@@ -1436,7 +1436,7 @@ async function saveFieldEdit(){
 /* ============ Sync to shotlist ============ */
 async function syncShotlist(){
   try {
-    const d = await api('/api/shotlist_sync', {});
+    const d = await api('api/shotlist_sync', {});
     toast('Shotlist sync — ' + d.created + ' row' + (d.created === 1 ? '' : 's') + ' created');
     await Promise.all([fetchShotlist(), fetchShots()]);
   } catch (e){ toast(e.message, {error: true}); }
@@ -1513,7 +1513,7 @@ function refCard(fn, opts){
   // the fixed-dimension .thumb until the IntersectionObserver hydrates it
   const media = opts.lazy
     ? '<div class="ph"></div>'
-    : '<img src="/api/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '" loading="lazy">';
+    : '<img src="api/ref/' + encodeURIComponent(fn) + '" title="' + escA(fn) + '" data-view="' + escA(fn) + '" loading="lazy">';
   return '<div class="card"><div class="thumb"' + (opts.lazy ? ' data-lazy="' + escA(fn) + '"' : '') + '>' +
     media +
     '<div class="acts">' + acts + '</div></div>' +
@@ -1572,7 +1572,7 @@ function refLazyHydrate(thumb){
   if (!fn) return;
   thumb.removeAttribute('data-lazy');
   const img = document.createElement('img');
-  img.src = '/api/ref/' + encodeURIComponent(fn);
+  img.src = 'api/ref/' + encodeURIComponent(fn);
   img.title = fn;
   img.setAttribute('data-view', fn);
   img.loading = 'lazy';
@@ -1613,22 +1613,22 @@ $('refsGrid').addEventListener('click', async e => {
     if (del){
       const fn = del.getAttribute('data-del');
       if (!await confirmDlg('Move ' + fn.split('/').pop() + ' to the bin? The file stays on disk and can be restored anytime.', 'Bin it')) return;
-      await api('/api/ref_bin', {file: fn});
+      await api('api/ref_bin', {file: fn});
       toast('Moved to bin');
       fetchRefs();
     } else if (arch){
-      await api('/api/ref_archive', {file: arch.getAttribute('data-arch')});
+      await api('api/ref_archive', {file: arch.getAttribute('data-arch')});
       toast('Reference archived');
       fetchRefs();
     } else if (restore){
-      await api('/api/ref_restore', {file: restore.getAttribute('data-refrestore')});
+      await api('api/ref_restore', {file: restore.getAttribute('data-refrestore')});
       toast('Reference restored');
       fetchRefs();
     } else if (move){
       const fn = move.getAttribute('data-move');
       const cat = prompt('Move ' + fn.split('/').pop() + ' to category:', fn.includes('/') ? fn.split('/').slice(0, -1).join('/') : '');
       if (!cat) return;
-      await api('/api/ref_move', {file: fn, category: cat.trim()});
+      await api('api/ref_move', {file: fn, category: cat.trim()});
       toast('Moved to ' + cat.trim());
       fetchRefs();
     } else if (edit){
@@ -1647,7 +1647,7 @@ $('refsGrid').addEventListener('click', async e => {
       massRegen(hregen.getAttribute('data-hregen'));
     } else if (view){
       const fn = view.getAttribute('data-view');
-      openImageModal('/api/ref/' + encodeURIComponent(fn), fn);
+      openImageModal('api/ref/' + encodeURIComponent(fn), fn);
     }
   } catch (err){ toast(err.message, {error: true}); }
 });
@@ -1684,7 +1684,7 @@ async function editRef(){
   try {
     const body = {file: fn, edit_instructions: instr, count};
     if (quality) body.quality = quality;
-    const d = await api('/api/ref_edit', body);
+    const d = await api('api/ref_edit', body);
     toast('Saved ' + d.files.length + ' edit' + (d.files.length > 1 ? 's' : ''));
     $('refEditInstr').value = '';
     fetchRefs();
@@ -1707,7 +1707,7 @@ async function generateRef(){
   try {
     const body = {verbatim_instructions: instr, category: cat, count};
     if (quality) body.quality = quality;
-    const d = await api('/api/generate_ref', body);
+    const d = await api('api/generate_ref', body);
     toast('Saved ' + d.files.length + ' reference' + (d.files.length > 1 ? 's' : '') + ' in ' + d.category);
     $('refGenInstr').value = '';
     fetchRefs();
@@ -1719,7 +1719,7 @@ async function addCategory(){
   const cat = prompt('New category path (use / for sub-categories, e.g. locations/motel):', S.refSelCat ? S.refSelCat + '/' : '');
   if (!cat || !cat.trim()) return;
   try {
-    const d = await api('/api/category_add', {category: cat.trim()});
+    const d = await api('api/category_add', {category: cat.trim()});
     toast('Category added: ' + d.category);
     await fetchRefs();
     S.refSelCat = d.category;
@@ -1758,7 +1758,7 @@ function renderHeroPanel(){
   html += heroes.map(h => {
     const tagged = taggedShotsFor(h);
     const thumb = h.ref_image
-      ? '<img src="/api/ref/' + encodeURIComponent(h.ref_image) + '" data-view="' + escA(h.ref_image) + '" onerror="this.style.display=\'none\'" alt="">'
+      ? '<img src="api/ref/' + encodeURIComponent(h.ref_image) + '" data-view="' + escA(h.ref_image) + '" onerror="this.style.display=\'none\'" alt="">'
       : '';
     const shotsList = tagged.length
       ? tagged.map(s => esc(s.output_file || ('sc ' + s.scene_number))).join('<br>')
@@ -1784,7 +1784,7 @@ function renderHeroPanel(){
 }
 async function restoreHero(id){
   try {
-    await api('/api/hero_update', {id, field: 'archived', value: false});
+    await api('api/hero_update', {id, field: 'archived', value: false});
     toast('Hero restored');
     await fetchRefs();
     S.refView = 'heroes';
@@ -1828,12 +1828,12 @@ async function saveHero(){
       const h = heroById(S.heroEditId);
       for (const [f, v] of Object.entries(fields)){
         if (!h || (h[f] || '') !== v){
-          await api('/api/hero_update', {id: S.heroEditId, field: f, value: v});
+          await api('api/hero_update', {id: S.heroEditId, field: f, value: v});
         }
       }
       toast('Hero updated: ' + name);
     } else {
-      const d = await api('/api/hero_create', fields);
+      const d = await api('api/hero_create', fields);
       toast('Hero created: ' + d.hero.name + ' (' + d.hero.id + ')');
     }
     S.heroEditId = null;
@@ -1847,7 +1847,7 @@ async function deleteHero(id){
   const h = heroById(id);
   if (!await confirmDlg('Archive hero "' + (h ? h.name : id) + '"? It stops influencing prompts but stays in hero_assets.json.', 'Archive hero')) return;
   try {
-    await api('/api/hero_delete', {id});
+    await api('api/hero_delete', {id});
     toast('Hero archived');
     await fetchRefs();
     renderRefs();
@@ -1860,7 +1860,7 @@ async function massRegen(id){
   if (!await confirmDlg('Mass-regenerate ' + withFrames + ' rendered frame' + (withFrames === 1 ? '' : 's') +
       ' tagged with "' + (h ? h.name : id) + '"? Each is an image-to-image edit (1–3 min per frame); old versions are kept in history.', 'Start')) return;
   try {
-    const d = await api('/api/mass_regen', {hero_id: id});
+    const d = await api('api/mass_regen', {hero_id: id});
     toast('Mass regen queued: ' + d.count + ' storyboard' + (d.count === 1 ? '' : 's'));
     trackJob(d.job_id, 'Mass regen: ' + (d.hero || id));
   } catch (e){ toast(e.message, {error: true}); }
@@ -1949,7 +1949,7 @@ function startDescEdit(el){
     if (field === 'name' && !v){ restore(cur); toast('A name is required', {error: true}); return; }
     restore(v); // optimistic
     try {
-      await api('/api/hero_update', {id, field, value: v});
+      await api('api/hero_update', {id, field, value: v});
       h[field] = v;
       toast(field + ' saved');
       renderRefs();   // name/type also appear in the card header
@@ -1978,7 +1978,7 @@ async function describeRef(fn){
   $('describeHeroBtn').disabled = true;
   openModal('describeModal');
   try {
-    const d = await api('/api/describe_ref', {file: fn});
+    const d = await api('api/describe_ref', {file: fn});
     // stale if the modal was closed or another describe started meanwhile
     if (describeCurFile !== fn || !$('describeModal').classList.contains('open')) return;
     $('describeLoading').style.display = 'none';
@@ -2073,7 +2073,7 @@ async function deleteSelectedRows(){
   if (!idxs.length) return;
   if (!await confirmDlg('Delete ' + idxs.length + ' row' + (idxs.length === 1 ? '' : 's') + '? This cannot be undone.', 'Delete')) return;
   try {
-    const d = await api('/api/shotlist_delete_bulk', {row_indices: idxs});
+    const d = await api('api/shotlist_delete_bulk', {row_indices: idxs});
     backupSaved();
     await fetchShotlist();
     toast(d.deleted + ' row' + (d.deleted === 1 ? '' : 's') + ' deleted');
@@ -2127,7 +2127,7 @@ function startCellEdit(td){
     if (v === cur){ restore(cur); return; }
     restore(v); // optimistic; fetchShotlist re-renders with server truth
     try {
-      await api('/api/shotlist_update', {row_index: rowIdx, Order: order, field: col, value: v});
+      await api('api/shotlist_update', {row_index: rowIdx, Order: order, field: col, value: v});
       backupSaved();
       await fetchShotlist();
       toast(col + ' saved');
@@ -2148,7 +2148,7 @@ async function deleteShotlistRow(el){
   const order = el.getAttribute('data-order') || '';
   if (!await confirmDlg('Delete shotlist row ' + (order || '#' + (idx + 1)) + '? This cannot be undone.', 'Delete')) return;
   try {
-    await api('/api/shotlist_delete', {row_index: idx, Order: order});
+    await api('api/shotlist_delete', {row_index: idx, Order: order});
     backupSaved();
     await fetchShotlist();
     toast('Row deleted');
@@ -2156,7 +2156,7 @@ async function deleteShotlistRow(el){
 }
 async function addShotlistRow(){
   try {
-    const d = await api('/api/shotlist_create', {});
+    const d = await api('api/shotlist_create', {});
     backupSaved();
     await fetchShotlist();
     toast('Row ' + d.row.Order + ' added — click any cell to edit');
@@ -2187,7 +2187,7 @@ async function importShotlistCsv(){
   slImportText = null;
   closeModal('slImportModal');
   try {
-    const d = await api('/api/shotlist_import?mode=' + encodeURIComponent(mode), {csv: text});
+    const d = await api('api/shotlist_import?mode=' + encodeURIComponent(mode), {csv: text});
     backupSaved();
     await fetchShotlist();
     toast('Imported (' + d.mode + ') — ' + d.created + ' added, ' + d.updated + ' updated, ' + d.total + ' total');
@@ -2239,15 +2239,15 @@ $('archiveGrid').addEventListener('click', async e => {
       openImageModal(viewFrame.getAttribute('data-view-frame'));
     } else if (view){
       const fn = view.getAttribute('data-view');
-      openImageModal('/api/ref/' + encodeURIComponent(fn), fn);
+      openImageModal('api/ref/' + encodeURIComponent(fn), fn);
     } else if (refRes){
-      await api('/api/ref_restore', {file: refRes.getAttribute('data-refrestore')});
+      await api('api/ref_restore', {file: refRes.getAttribute('data-refrestore')});
       toast('Reference restored');
       fetchRefs();
     } else if (res){
       const p = payloadFor(res.getAttribute('data-restore'));
       if (!p) return;
-      const d = await api('/api/unarchive', p);
+      const d = await api('api/unarchive', p);
       toast('Restored (' + d.status + ')');
       await refreshData();
     }
@@ -2297,7 +2297,7 @@ function refNav(dir){
   if (!refNavList) return;
   refNavIdx = (refNavIdx + dir + refNavList.length) % refNavList.length;   // wraps
   imgModalFile = refNavList[refNavIdx];
-  $('fullImg').src = '/api/ref/' + encodeURIComponent(imgModalFile);
+  $('fullImg').src = 'api/ref/' + encodeURIComponent(imgModalFile);
 }
 
 /* Viewer action bar — same actions as the thumbnail cards. Shown on hover
@@ -2335,23 +2335,23 @@ $('imgActBar').addEventListener('click', async e => {
     } else if (act === 'move'){
       const cat = prompt('Move ' + fn.split('/').pop() + ' to category:', fn.includes('/') ? fn.split('/').slice(0, -1).join('/') : '');
       if (!cat) return;
-      await api('/api/ref_move', {file: fn, category: cat.trim()});
+      await api('api/ref_move', {file: fn, category: cat.trim()});
       closeModal('imageModal');
       toast('Moved to ' + cat.trim());
       fetchRefs();
     } else if (act === 'arch'){
-      await api('/api/ref_archive', {file: fn});
+      await api('api/ref_archive', {file: fn});
       closeModal('imageModal');
       toast('Reference archived');
       fetchRefs();
     } else if (act === 'bin'){
       closeModal('imageModal');   // confirm dialog would render underneath the image modal
       if (!await confirmDlg('Move ' + fn.split('/').pop() + ' to the bin? The file stays on disk and can be restored anytime.', 'Bin it')) return;
-      await api('/api/ref_bin', {file: fn});
+      await api('api/ref_bin', {file: fn});
       toast('Moved to bin');
       fetchRefs();
     } else if (act === 'restore'){
-      await api('/api/ref_restore', {file: fn});
+      await api('api/ref_restore', {file: fn});
       closeModal('imageModal');
       toast('Reference restored');
       fetchRefs();
@@ -2442,7 +2442,7 @@ function onExportChange(e){
   const v = e.target.value;
   if (!v) return;
   const parts = v.split('|');
-  window.location = '/api/export?what=' + parts[0] + '&format=' + parts[1];
+  window.location = 'api/export?what=' + parts[0] + '&format=' + parts[1];
   e.target.value = '';
   toast('Export started — check your downloads');
 }
