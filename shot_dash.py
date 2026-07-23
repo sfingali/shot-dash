@@ -2483,7 +2483,10 @@ class Handler(BaseHTTPRequestHandler):
         for n in range(count):
             img_bytes = openai_generate_image(prompt, key, quality)
             fname = "ref_%s_%s_%d.png" % (cat_leaf, stamp, n + 1)
-            with open(os.path.join(cat_dir, fname), "wb") as of:
+            out_path = os.path.join(cat_dir, fname)
+            if os.path.exists(out_path):
+                raise ApiError("File already exists: " + fname, 409)
+            with open(out_path, "wb") as of:
                 of.write(img_bytes)
             files.append(category + "/" + fname)
         self._json({"ok": True, "files": files, "file": files[0],
@@ -2602,7 +2605,10 @@ class Handler(BaseHTTPRequestHandler):
         for n in range(count):
             img_bytes = openai_edit_image(source_bytes, prompt, key, quality)
             fname = "%s_edit_%s_%d.png" % (stem, stamp, n + 1)
-            with open(os.path.join(os.path.dirname(filepath), fname), "wb") as of:
+            out_path = os.path.join(os.path.dirname(filepath), fname)
+            if os.path.exists(out_path):
+                raise ApiError("File already exists: " + fname, 409)
+            with open(out_path, "wb") as of:
                 of.write(img_bytes)
             files.append((rel_dir + "/" if rel_dir else "") + fname)
         self._json({"ok": True, "files": files, "file": files[0]})
@@ -2814,6 +2820,8 @@ class Handler(BaseHTTPRequestHandler):
             img_bytes = openai_generate_image(prompt, key, q)
             out_name = f"{base_name}_var_{ts}_{i+1}.png"
             out_path = os.path.join(out_dir, out_name)
+            if os.path.exists(out_path):
+                raise ApiError("File already exists: " + out_name, 409)
             with open(out_path, "wb") as of:
                 of.write(img_bytes)
             rel = (cat + "/" + out_name) if cat not in ("", ".") else out_name
