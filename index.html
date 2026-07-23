@@ -464,9 +464,16 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <div class="hint">Composition, lighting, palette and mood are preserved automatically. Takes 1&ndash;3 minutes.</div>
   <div class="err" id="editInstrErr">Describe the edit first.</div>
 </div>
+<div class="field"><label for="editHeroes">Hero assets</label>
+  <input id="editHeroes" placeholder="e.g. Ben — Motel / Divorce" list="heroTagList">
+  <div class="hint">Tag hero assets introduced or changed by this edit.</div>
+</div>
 <div class="field"><label for="editQuality">Quality</label>
   <select id="editQuality"></select>
   <div class="hint" id="editCost"></div>
+</div>
+<div class="field"><label for="editCount">Generations</label>
+  <input id="editCount" value="1" type="number" min="1" max="9">
 </div>
 <div class="modal-foot">
   <button class="btn" data-act="close" data-modal="editModal">Cancel</button>
@@ -1380,7 +1387,16 @@ async function generateShot(){
     toast('Generated ' + d.output_file + ' (v' + d.version + ', ' + d.size_kb + ' KB)');
     await refreshData();
   } catch (e){
+    const msg = (e.message || '').toLowerCase();
     toast(e.message, {error: true});
+    // If OpenAI rejected the edit (safety/content filter), re-open the modal
+    // with the prompt preserved so the user can tweak it instead of losing it
+    if (msg.includes('safety') || msg.includes('content') || msg.includes('rejected') || msg.includes('blocked')) {
+      showEditPrompt();
+      $('editInstr').value = instr;
+      $('editHeroes').value = heroTags || '';
+      $('editCount').value = String(editCount);
+    }
   } finally { end(); }
 }
 function showEditPrompt(){
@@ -1388,6 +1404,8 @@ function showEditPrompt(){
   $('editInstrErr').classList.remove('on');
   $('editInstr').classList.remove('invalid');
   $('editInstr').value = '';
+  $('editHeroes').value = '';
+  $('editCount').value = '1';
   updateEditCost();
   // openModal adds the .open class (so Escape/backdrop dismissal and
   // anyModalOpen() work) and clears any stuck generation overlay. The old
@@ -1410,18 +1428,37 @@ async function editShot(){
   const p = key && payloadFor(key);
   if (!found || !p) return;
   const quality = $('editQuality').value;   // '' = project default
+  const heroTags = $('editHeroes').value.trim();
+  const editCount = Math.min(9, Math.max(1, parseInt($('editCount').value, 10) || 1));
   closeModal('editModal');
   $('editInstr').value = '';
-  const end = startJob('Editing sc ' + (found.shot.scene_number || '?'), key);
+  $('editHeroes').value = '';
+  const end = startJob('Editing sc ' + (found.shot.scene_number || '?') + (editCount > 1 ? ' x' + editCount : ''), key);
   try {
-    const body = Object.assign({edit_instructions: instr}, p);
-    if (quality) body.quality = quality;
-    const d = await api('api/edit', body);
-    S.selectedKey = d.output_file;
-    toast('Edited → ' + d.output_file + ' (v' + d.version + ')');
+    let lastD = null;
+    for (let g = 0; g < editCount; g++) {
+      const body = Object.assign({edit_instructions: instr}, p);
+      if (quality) body.quality = quality;
+      if (heroTags) body.hero_tags = heroTags;
+      const d = await api('api/edit', body);
+      lastD = d;
+    }
+    if (lastD) {
+      S.selectedKey = lastD.output_file;
+      toast('Edited → ' + lastD.output_file + ' (v' + lastD.version + ')' + (editCount > 1 ? ' +' + (editCount-1) + ' more' : ''));
+    }
     await refreshData();
   } catch (e){
+    const msg = (e.message || '').toLowerCase();
     toast(e.message, {error: true});
+    // If OpenAI rejected the edit (safety/content filter), re-open the modal
+    // with the prompt preserved so the user can tweak it instead of losing it
+    if (msg.includes('safety') || msg.includes('content') || msg.includes('rejected') || msg.includes('blocked')) {
+      showEditPrompt();
+      $('editInstr').value = instr;
+      $('editHeroes').value = heroTags || '';
+      $('editCount').value = String(editCount);
+    }
   } finally { end(); }
 }
 async function archiveShot(){
@@ -1834,7 +1871,16 @@ async function genVariations(){
     $('refVarPrompt').value = '';
     fetchRefs();
   } catch (e){
+    const msg = (e.message || '').toLowerCase();
     toast(e.message, {error: true});
+    // If OpenAI rejected the edit (safety/content filter), re-open the modal
+    // with the prompt preserved so the user can tweak it instead of losing it
+    if (msg.includes('safety') || msg.includes('content') || msg.includes('rejected') || msg.includes('blocked')) {
+      showEditPrompt();
+      $('editInstr').value = instr;
+      $('editHeroes').value = heroTags || '';
+      $('editCount').value = String(editCount);
+    }
   } finally { end(); }
 }
 function showRefEdit(fn){
@@ -1867,7 +1913,16 @@ async function editRef(){
     $('refEditInstr').value = '';
     fetchRefs();
   } catch (e){
+    const msg = (e.message || '').toLowerCase();
     toast(e.message, {error: true});
+    // If OpenAI rejected the edit (safety/content filter), re-open the modal
+    // with the prompt preserved so the user can tweak it instead of losing it
+    if (msg.includes('safety') || msg.includes('content') || msg.includes('rejected') || msg.includes('blocked')) {
+      showEditPrompt();
+      $('editInstr').value = instr;
+      $('editHeroes').value = heroTags || '';
+      $('editCount').value = String(editCount);
+    }
   } finally { end(); }
 }
 async function generateRef(){
@@ -1890,7 +1945,16 @@ async function generateRef(){
     $('refGenInstr').value = '';
     fetchRefs();
   } catch (e){
+    const msg = (e.message || '').toLowerCase();
     toast(e.message, {error: true});
+    // If OpenAI rejected the edit (safety/content filter), re-open the modal
+    // with the prompt preserved so the user can tweak it instead of losing it
+    if (msg.includes('safety') || msg.includes('content') || msg.includes('rejected') || msg.includes('blocked')) {
+      showEditPrompt();
+      $('editInstr').value = instr;
+      $('editHeroes').value = heroTags || '';
+      $('editCount').value = String(editCount);
+    }
   } finally { end(); }
 }
 async function addCategory(){
