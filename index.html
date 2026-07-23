@@ -2898,7 +2898,7 @@ const ACTIONS = {
         const body = {hero_id: hero.id, prompt, apply_style: applyStyle};
         if (quality) body.quality = quality;
         const d = await api('api/generate_from_hero', body);
-        if (d.output_file) files.push(d.output_file);
+        if (d.file) files.push(d.file);
       }
       toast('Generated ' + files.length + ' reference image' + (files.length === 1 ? '' : 's'));
       await fetchRefs();
