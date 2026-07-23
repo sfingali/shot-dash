@@ -2765,7 +2765,7 @@ class Handler(BaseHTTPRequestHandler):
             cat = hero_ref_category(hero)
             cat_dir = os.path.join(refs_dir(), cat)
             os.makedirs(cat_dir, exist_ok=True)
-            ref_name = "hero_%s.png" % (_slug(hero_id) or "asset")
+            ref_name = "hero_%s_%s.png" % (_slug(hero_id) or "asset", time.strftime("%Y%m%d_%H%M%S"))
             with open(os.path.join(cat_dir, ref_name), "wb") as rf:
                 rf.write(img_bytes)
             thumb_file = cat + "/" + ref_name
