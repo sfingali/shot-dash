@@ -1033,36 +1033,48 @@ async function fetchRefs(){
   renderRefs();
   renderArchive();
   renderStats();
-  // Populate clickable hero tag chips for both modals
+  // Populate clickable hero tag chips for both modals — filterable by typing
   ['createTagChips','editTagChips'].forEach(chipId => {
     const container = $(chipId);
     if (!container) return;
     const targetInput = chipId === 'createTagChips' ? 'newHeroes' : 'editHeroes';
-    container.innerHTML = '';
-    S.heroes.filter(h => !h.archived).forEach(h => {
-      const chip = document.createElement('span');
-      chip.style.cssText = 'display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;font-weight:600;background:var(--surface-3);color:var(--text);border:1px solid var(--border);cursor:pointer;white-space:nowrap;user-select:none;line-height:1.7';
-      chip.textContent = h.name;
-      chip.title = h.type + ' — click to add tag';
-      chip.onclick = () => {
-        const inp = $(targetInput);
-        if (!inp) return;
-        const existing = inp.value.split(',').map(t => t.trim()).filter(Boolean);
-        if (!existing.includes(h.name)) {
-          existing.push(h.name);
-          inp.value = existing.join(', ');
-        }
-        chip.style.background = 'var(--accent-dim)';
-        chip.style.borderColor = 'var(--accent)';
-        chip.style.color = 'var(--accent)';
-        setTimeout(() => {
-          chip.style.background = 'var(--surface-3)';
-          chip.style.borderColor = 'var(--border)';
-          chip.style.color = 'var(--text)';
-        }, 600);
-      };
-      container.appendChild(chip);
-    });
+    const allHeroes = S.heroes.filter(h => !h.archived && (h.category === 'characters' || h.type === 'character' || h.type === 'character_variant'));
+    const chips = {}, renderChips = (filter) => {
+      const q = (filter || '').trim().toLowerCase();
+      container.innerHTML = '';
+      allHeroes.filter(h => !q || h.name.toLowerCase().includes(q)).forEach(h => {
+        const chip = document.createElement('span');
+        chip.style.cssText = 'display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;font-weight:600;background:var(--surface-3);color:var(--text);border:1px solid var(--border);cursor:pointer;white-space:nowrap;user-select:none;line-height:1.7';
+        chip.textContent = h.name;
+        chip.title = h.type + ' — click to add';
+        chip.onclick = () => {
+          const inp = $(targetInput);
+          if (!inp) return;
+          const existing = inp.value.split(',').map(t => t.trim()).filter(Boolean);
+          if (!existing.includes(h.name)) {
+            existing.push(h.name);
+            inp.value = existing.join(', ');
+          }
+          // Brief flash to confirm
+          chip.style.background = 'var(--accent-dim)';
+          chip.style.borderColor = 'var(--accent)';
+          chip.style.color = 'var(--accent)';
+          setTimeout(() => { chip.style.background = 'var(--surface-3)'; chip.style.borderColor = 'var(--border)'; chip.style.color = 'var(--text)'; }, 600);
+        };
+        chips[h.name] = chip;
+        container.appendChild(chip);
+      });
+    };
+    renderChips(); // show all initially
+    const inp = $(targetInput);
+    if (inp) {
+      // Filter chips as user types (only check the text after the last comma — the new tag being typed)
+      inp.addEventListener('input', () => {
+        const lastComma = inp.value.lastIndexOf(',');
+        const typing = lastComma >= 0 ? inp.value.substring(lastComma + 1) : inp.value;
+        renderChips(typing);
+      });
+    }
   });
   updateBadges();
 }
