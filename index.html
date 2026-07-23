@@ -481,6 +481,19 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 </div>
 </div>
 
+<div class="modal" id="batchProgressModal">
+<div class="modal-inner">
+<h3 id="batchProgressTitle">Generating reference images</h3>
+<div style="height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden">
+  <i id="batchProgressBar" style="display:block;height:100%;width:0;background:var(--accent);transition:width .25s ease"></i>
+</div>
+<div class="hint" id="batchProgressCounts" style="font-variant-numeric:tabular-nums"></div>
+<div class="modal-foot">
+  <button class="btn" data-act="close" data-modal="batchProgressModal">Cancel</button>
+</div>
+</div>
+</div>
+
 <div class="modal" id="editModal">
 <div class="modal-inner">
 <h3>Image-to-image edit</h3>
@@ -2935,18 +2948,30 @@ const ACTIONS = {
     const cost = qualityCost(q);
     if (!await confirmDlg('Generate ' + pending.length + ' reference image' + (pending.length === 1 ? '' : 's') +
       ' for ' + label + ' at ' + q + ' quality' + (cost ? ' — est. ' + cost + ' each' : '') + '?', 'Generate All')) return;
-    const end = startJob('Generating ' + pending.length + ' reference image' + (pending.length === 1 ? '' : 's') + ' — ' + label);
+    const total = pending.length;
     let ok = 0, fail = 0;
+    const paint = () => {
+      $('batchProgressBar').style.width = Math.round((ok + fail) / total * 100) + '%';
+      $('batchProgressCounts').textContent = ok + '/' + total + ' done · ' + fail + ' failed · ' + (total - ok - fail) + ' queued';
+    };
+    $('batchProgressTitle').textContent = 'Generating ' + total + ' reference image' + (total === 1 ? '' : 's') + ' for ' + label;
+    paint();
+    openModal('batchProgressModal');
+    // Closing the modal — Cancel button, Escape or backdrop — stops the loop
+    // once the in-flight request settles.
+    let cancelled = false;
     for (const h of pending){
+      if (!$('batchProgressModal').classList.contains('open')){ cancelled = true; break; }
       try {
         let prompt = h.name + ': ' + h.description;
         if (stylePrompt) prompt += '. ' + stylePrompt;
         await api('api/generate_from_hero', {hero_id: h.id, prompt: prompt});
         ok++;
       } catch (e){ fail++; }
+      paint();
     }
-    end();
-    toast('Generated: ' + ok + ' ok' + (fail ? ', ' + fail + ' failed' : ''), fail && !ok ? {error: true} : {});
+    closeModal('batchProgressModal');
+    toast('Generated: ' + ok + ' ok' + (fail ? ', ' + fail + ' failed' : '') + (cancelled ? ' — cancelled, ' + (total - ok - fail) + ' skipped' : ''), fail && !ok ? {error: true} : {});
     await fetchRefs();
   },
   genFromHero: async () => {
