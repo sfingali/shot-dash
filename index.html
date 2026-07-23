@@ -2836,6 +2836,33 @@ document.addEventListener('keydown', e => {
 
 /* ============ Init ============ */
 refreshAll();
+// Multi-tag input: datalist replaces the whole value on selection.
+// Detect selection and append with comma instead.
+function setupTagInput(inputId, datalistId){
+  const inp = $(inputId);
+  if (!inp) return;
+  let lastVal = '';
+  inp.addEventListener('input', () => {
+    const val = inp.value;
+    const dl = document.getElementById(datalistId);
+    if (!dl) return;
+    const options = [...dl.options].map(o => o.value);
+    // If the new value exactly matches an option and isn't just a prefix of the old value
+    if (options.includes(val) && lastVal && !lastVal.endsWith(val)) {
+      // Datalist selection occurred — append with comma instead of replacing
+      const commaIdx = lastVal.lastIndexOf(',');
+      if (commaIdx >= 0) {
+        inp.value = lastVal.substring(0, commaIdx + 1) + ' ' + val;
+      } else if (lastVal.trim()) {
+        inp.value = lastVal + ', ' + val;
+      }
+    }
+    lastVal = inp.value;
+  });
+}
+// Wire up on page load
+setupTagInput('newHeroes', 'heroTagList');
+setupTagInput('editHeroes', 'heroTagList');
 </script>
 </body>
 </html>
