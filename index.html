@@ -488,6 +488,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
   <i id="batchProgressBar" style="display:block;height:100%;width:0;background:var(--accent);transition:width .25s ease"></i>
 </div>
 <div class="hint" id="batchProgressCounts" style="font-variant-numeric:tabular-nums"></div>
+<div class="hint" id="batchProgressNow" style="color:var(--text);margin-top:var(--s1)"></div>
 <div class="modal-foot">
   <button class="btn" data-act="close" data-modal="batchProgressModal">Cancel</button>
 </div>
@@ -2950,9 +2951,10 @@ const ACTIONS = {
       ' for ' + label + ' at ' + q + ' quality' + (cost ? ' — est. ' + cost + ' each' : '') + '?', 'Generate All')) return;
     const total = pending.length;
     let ok = 0, fail = 0;
-    const paint = () => {
+    const paint = (now) => {
       $('batchProgressBar').style.width = Math.round((ok + fail) / total * 100) + '%';
       $('batchProgressCounts').textContent = ok + '/' + total + ' done · ' + fail + ' failed · ' + (total - ok - fail) + ' queued';
+      if (now) $('batchProgressNow').textContent = 'Now: ' + now;
     };
     $('batchProgressTitle').textContent = 'Generating ' + total + ' reference image' + (total === 1 ? '' : 's') + ' for ' + label;
     paint();
@@ -2962,6 +2964,7 @@ const ACTIONS = {
     let cancelled = false;
     for (const h of pending){
       if (!$('batchProgressModal').classList.contains('open')){ cancelled = true; break; }
+      paint(h.name);
       try {
         let prompt = h.name + ': ' + h.description;
         if (stylePrompt) prompt += '. ' + stylePrompt;
@@ -2985,9 +2988,10 @@ const ACTIONS = {
     closeModal('heroGenModal');
     const total = count;
     let ok = 0, fail = 0;
-    const paint = () => {
+    const paint = (now) => {
       $('batchProgressBar').style.width = Math.round((ok + fail) / total * 100) + '%';
       $('batchProgressCounts').textContent = ok + '/' + total + ' done · ' + fail + ' failed · ' + (total - ok - fail) + ' queued';
+      if (now) $('batchProgressNow').textContent = 'Now: ' + now;
     };
     $('batchProgressTitle').textContent = 'Generating ' + total + ' reference image' + (total === 1 ? '' : 's') + ' from ' + hero.name;
     paint();
@@ -2996,6 +3000,7 @@ const ACTIONS = {
     try {
       for (let g = 0; g < count; g++) {
         if (!$('batchProgressModal').classList.contains('open')){ cancelled = true; break; }
+        paint(hero.name);
         try {
           const body = {hero_id: hero.id, prompt, apply_style: applyStyle};
           if (quality) body.quality = quality;
