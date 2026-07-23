@@ -1436,12 +1436,18 @@ async function editShot(){
   const end = startJob('Editing sc ' + (found.shot.scene_number || '?') + (editCount > 1 ? ' x' + editCount : ''), key);
   try {
     let lastD = null;
+    // Each edit version-bumps the row (v6 -> v7 -> ...), pushing the previous
+    // file into version_history. Re-target the payload at the file the last
+    // edit produced so iteration N+1 edits the latest version rather than a
+    // now-stale key that no longer matches any row's output_file.
+    let curPayload = p;
     for (let g = 0; g < editCount; g++) {
-      const body = Object.assign({edit_instructions: instr}, p);
+      const body = Object.assign({edit_instructions: instr}, curPayload);
       if (quality) body.quality = quality;
       if (heroTags) body.hero_tags = heroTags;
       const d = await api('api/edit', body);
       lastD = d;
+      if (d && d.output_file) curPayload = {output_file: d.output_file};
     }
     if (lastD) {
       S.selectedKey = lastD.output_file;

@@ -1644,13 +1644,23 @@ def openai_describe_image(img_bytes, mime, key):
 
 # -- Versioning ------------------------------------------------------------
 def next_version_name(old_file, scene_number):
-    """Return (new_output_file, version_number) for a shot's next render."""
+    """Return (new_output_file, version_number) for a shot's next render.
+
+    A version token (``_vN``) may be followed by a suffix such as ``_copy`` on
+    a duplicated shot. That suffix must be preserved so the duplicate keeps its
+    own naming chain (``_v6_copy`` -> ``_v7_copy``) instead of shedding the
+    suffix and colliding with the original's chain (``_v6`` -> ``_v7``), which
+    left duplicate rows pointing at files the CSV no longer matched."""
     if old_file:
-        m = re.search(r"_v(\d+)", old_file)
         ext = os.path.splitext(old_file)[1] or ".png"
+        stem = (old_file[:-len(ext)] if ext and old_file.endswith(ext)
+                else os.path.splitext(old_file)[0])
+        m = re.search(r"_v(\d+)", stem)
         if m:
-            return "%s_v%d%s" % (old_file[:m.start()], int(m.group(1)) + 1, ext), int(m.group(1)) + 1
-        return "%s_v2%s" % (os.path.splitext(old_file)[0], ext), 2
+            new_v = int(m.group(1)) + 1
+            new_stem = "%s_v%d%s" % (stem[:m.start()], new_v, stem[m.end():])
+            return new_stem + ext, new_v
+        return "%s_v2%s" % (stem, ext), 2
     return "%s_sc_%s_v1.png" % (file_prefix(), scene_number or "XX"), 1
 
 
