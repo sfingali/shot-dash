@@ -1688,5 +1688,18 @@
     "ref_image": "",
     "archived": false,
     "updated": "2026-07-23"
+  },
+  {
+    "id": "hero_138",
+    "name": "Ben (base)",
+    "type": "character",
+    "category": "characters",
+    "description": "Jonathan Rhys Meyers \u2014 cast. Broad-shouldered man, mid-40s, mechanic's build with calloused capable hands. Dark receding hair, face almost always unshaven, heavy around the eyes with deep-set tired eyes and strong jaw working with suppressed emotion. Multiple tattoos across torso and arms \u2014 most notably a faded black-ink Ace of Hearts on his inner wrist, the mark of a New Mexico crew. Wears long sleeves specifically to hide his tattoos. Earth-tone palette: faded blues, grays, browns. Contemporary working-class American.",
+    "breakdown": "Jonathan Rhys Meyers \u2014 cast.",
+    "colors": "",
+    "notes": "Base description \u2014 invariant physical traits. Tag alongside scene-specific variant for complete prompt injection.",
+    "ref_image": "",
+    "archived": false,
+    "updated": "2026-07-23"
   }
 ]
