@@ -690,21 +690,28 @@ _BACKUP_MTIMES = {}
 
 
 def backup_all_projects():
-    """Snapshot every project's CSVs + hero JSON into backups/<project>/
-    whenever they changed since the last pass. Old snapshots are pruned by
-    count, never the most recent ones."""
+    """Snapshot every project's CSVs + hero JSON into per-type subdirectories
+    backups/<project>/{shots,shotlist,heroes}/ whenever they changed since the
+    last pass. Each subdirectory is pruned independently by count (BACKUP_KEEP
+    per type), never the most recent ones — so a churny file can't evict the
+    only backup of a rarely-changed one."""
     for name in list_projects():
         try:
             with open(settings_path(name), encoding="utf-8") as f:
                 s = json.load(f)
         except (OSError, json.JSONDecodeError):
             continue
-        targets = [s.get("csv_path"), s.get("shotlist_path"),
-                   os.path.join(project_dir(name), "hero_assets.json")]
-        dest_dir = os.path.join(BACKUPS_DIR, name)
-        for p in targets:
+        # (source path, per-type subdirectory) — one bucket per file kind.
+        targets = [
+            (s.get("csv_path"), "shots"),
+            (s.get("shotlist_path"), "shotlist"),
+            (os.path.join(project_dir(name), "hero_assets.json"), "heroes"),
+        ]
+        base_dir = os.path.join(BACKUPS_DIR, name)
+        for p, subdir in targets:
             if not p or not os.path.isfile(p):
                 continue
+            dest_dir = os.path.join(base_dir, subdir)
             try:
                 mt = os.path.getmtime(p)
                 if _BACKUP_MTIMES.get(p) == mt:
@@ -717,13 +724,12 @@ def backup_all_projects():
                 _BACKUP_MTIMES[p] = mt
             except OSError:
                 continue
-        try:
-            if os.path.isdir(dest_dir):
+            try:
                 snaps = sorted(os.listdir(dest_dir))
                 for old in snaps[:-BACKUP_KEEP]:
                     os.remove(os.path.join(dest_dir, old))
-        except OSError:
-            pass
+            except OSError:
+                pass
 
 
 def _backup_loop():
@@ -864,6 +870,15 @@ def resolve_row(rows, data):
     if not isinstance(idx, int) or idx < 0 or idx >= len(rows):
         raise ApiError("Row index out of range")
     return idx, rows[idx]
+
+
+def _shot_signature(row):
+    """A content fingerprint used to detect that a row_index no longer refers
+    to the same shot after a lock was released (e.g. across the multi-minute
+    OpenAI call). Built from fields that identify a shot but don't change
+    during generation."""
+    return tuple((row.get(f) or "") for f in
+                 ("scene_number", "shot_number", "verbatim_instructions"))
 
 
 # -- Scene data ------------------------------------------------------------
@@ -1542,7 +1557,9 @@ def make_thumbnail(src_path, base_dir, width, cache_dirname=THUMB_DIRNAME):
             if fmt == "JPEG" and im.mode not in ("RGB", "L"):
                 im = im.convert("RGB")
             elif im.mode == "P":
-                im = im.convert("RGBA")
+                # GIF is palette-based with no true alpha channel; saving an
+                # RGBA image back as GIF raises, so drop alpha for GIF sources.
+                im = im.convert("RGB" if fmt == "GIF" else "RGBA")
             h = max(1, round(im.height * width / im.width))
             im = im.resize((width, h), Image.LANCZOS)
             os.makedirs(os.path.dirname(thumb), exist_ok=True)
@@ -2355,7 +2372,7 @@ class Handler(BaseHTTPRequestHandler):
                         heroes = load_heroes()
                         for h in heroes:
                             if not h.get("archived"):
-                                if h["name"] in [t.strip() for t in tags.split(",")] or h["id"] in [t.strip() for t in tags.split(",")]:
+                                if h.get("name", "") in [t.strip() for t in tags.split(",")] or h.get("id", "") in [t.strip() for t in tags.split(",")]:
                                     desc = (h.get("description") or "").strip()
                                     if desc:
                                         curated += ". Keep this element exactly consistent — " + desc
@@ -2396,7 +2413,14 @@ class Handler(BaseHTTPRequestHandler):
             if field not in fieldnames:
                 raise ApiError("Unknown field: " + str(field))
             idx, row = resolve_row(rows, data)
-            row[field] = str(value if value is not None else "")
+            new_value = str(value if value is not None else "")
+            # output_file keys file lookups everywhere else; a duplicate would
+            # break the identity invariant, so reject one here.
+            if field == "output_file" and new_value.strip():
+                for j, other in enumerate(rows):
+                    if j != idx and (other.get("output_file") or "").strip() == new_value.strip():
+                        raise ApiError("Duplicate output_file: " + new_value, 409)
+            row[field] = new_value
             write_csv(rows, fieldnames)
         self._json({"ok": True})
 
@@ -2449,6 +2473,11 @@ class Handler(BaseHTTPRequestHandler):
             prompt = build_generation_prompt(shot)
             identity = (shot.get("output_file") or "").strip()
             scene = shot.get("scene_number", "XX")
+            # Capture a content signature so a blank-output_file shot (which can
+            # only be re-resolved by volatile row_index) can be validated after
+            # the multi-minute API call — a concurrent insert/delete could shift
+            # row_index onto a different shot otherwise (TOCTOU).
+            row_sig = _shot_signature(shot)
         key = require_openai_key()
         quality = requested_quality(data)
         model = active_model()
@@ -2460,6 +2489,11 @@ class Handler(BaseHTTPRequestHandler):
                 idx, shot = resolve_row(rows, {"output_file": identity})
             else:
                 idx, shot = resolve_row(rows, data)
+                # row_index is an index into raw CSV order; if the CSV changed
+                # during generation it may now point at a different shot. Bail
+                # rather than overwrite the wrong row.
+                if _shot_signature(shot) != row_sig:
+                    raise ApiError("Shot changed during generation — retry", 409)
             old_file = (shot.get("output_file") or "").strip()
             output_file, new_v = next_version_name(old_file, scene, rows)
             fd = frames_dir()
@@ -2885,7 +2919,6 @@ class Handler(BaseHTTPRequestHandler):
             os.makedirs(cat_dir, exist_ok=True)
             # Name by subject: sequential counter + hero-name slug (e.g. 001_ben_motel_divorce.png)
             existing = {os.path.splitext(f)[0] for f in os.listdir(cat_dir) if f.endswith('.png')} if os.path.isdir(cat_dir) else set()
-            hero_slug = _slug(hero.get("name", hero_id)) or _slug(hero_id) or "asset"
             n = 1
             ref_name = "%03d_%s.png" % (n, hero_slug)
             while os.path.splitext(ref_name)[0] in existing:
@@ -3332,6 +3365,14 @@ def main():
     if not get_openai_key():
         print("   WARNING:  no OpenAI key found — generate/edit will fail")
     if BIND_HOST != "127.0.0.1":
+        # SECURITY WARNING: --public binds 0.0.0.0, exposing this server to
+        # every host that can reach this machine on PORT. There is NO
+        # authentication, authorization, or rate limiting anywhere in the
+        # request pipeline — anyone who reaches the port can read/edit shots,
+        # trigger paid OpenAI generations, and browse the frames/refs trees.
+        # This is an intentional, unmitigated exposure: only use --public on a
+        # trusted, firewalled network (never the open internet), and put an
+        # authenticating reverse proxy in front if you need real exposure.
         print("   PUBLIC:   listening on %s — reachable from the network" % BIND_HOST)
     print("   -> http://localhost:%d" % PORT)
     print("   Ctrl+C to stop\n")
