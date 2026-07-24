@@ -215,6 +215,14 @@ class ApiError(Exception):
         self.status = status
 
 
+def safe_int(v, default=0):
+    """int(v) that never raises on blank/garbage CSV cells."""
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
 # -- Project system --------------------------------------------------------
 # A project is a directory under projects/<name>/ holding project.json
 # (settings), its own shots CSV, shotlist CSV, hero_assets.json and
@@ -263,7 +271,7 @@ def save_settings(settings):
     name = settings["name"]
     os.makedirs(project_dir(name), exist_ok=True)
     tmp = settings_path(name) + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=2)
     os.replace(tmp, settings_path(name))
 
@@ -285,7 +293,7 @@ def ensure_default_project():
 
 def load_active_name():
     try:
-        with open(ACTIVE_PATH) as f:
+        with open(ACTIVE_PATH, encoding="utf-8") as f:
             name = json.load(f).get("active", "")
     except (OSError, json.JSONDecodeError):
         name = ""
@@ -298,7 +306,7 @@ def load_active_name():
 def save_active_name(name):
     os.makedirs(PROJECTS_DIR, exist_ok=True)
     tmp = ACTIVE_PATH + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump({"active": name}, f)
     os.replace(tmp, ACTIVE_PATH)
 
@@ -315,7 +323,7 @@ def load_project(name):
     if not os.path.isfile(sp):
         raise ApiError("Unknown project: " + name, 404)
     try:
-        with open(sp) as f:
+        with open(sp, encoding="utf-8") as f:
             saved = json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         raise ApiError("Could not read project settings: %s" % e, 500)
@@ -446,7 +454,7 @@ def heroes_path():
 
 def load_heroes():
     try:
-        with open(heroes_path()) as f:
+        with open(heroes_path(), encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, list) else []
     except (OSError, json.JSONDecodeError):
@@ -458,7 +466,7 @@ def save_heroes(heroes):
     # SIDE EFFECTS: atomically rewrites hero_assets.json.
     os.makedirs(os.path.dirname(heroes_path()), exist_ok=True)
     tmp = heroes_path() + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(heroes, f, indent=2)
     os.replace(tmp, heroes_path())
 
@@ -550,7 +558,7 @@ def read_shotlist():
     path = shotlist_path()
     if not path or not os.path.exists(path):
         return []
-    with open(path, "r", newline="") as f:
+    with open(path, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
     for r in rows:
@@ -681,7 +689,7 @@ def backup_all_projects():
     count, never the most recent ones."""
     for name in list_projects():
         try:
-            with open(settings_path(name)) as f:
+            with open(settings_path(name), encoding="utf-8") as f:
                 s = json.load(f)
         except (OSError, json.JSONDecodeError):
             continue
@@ -748,7 +756,7 @@ def read_csv():
     path = csv_path()
     if not os.path.exists(path):
         return [], list(CSV_COLUMNS)
-    with open(path, "r", newline="") as f:
+    with open(path, "r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
         fieldnames = list(reader.fieldnames) if reader.fieldnames else list(CSV_COLUMNS)
@@ -778,7 +786,7 @@ def _write_csv_file(path, rows, fieldnames):
         os.makedirs(backup_dir, exist_ok=True)
         ts = time.strftime("%Y%m%d_%H%M%S")
         backup_path = os.path.join(backup_dir, "%s.%s.csv" % (stem, ts))
-        with open(backup_path, "w", newline="") as bf:
+        with open(backup_path, "w", newline="", encoding="utf-8") as bf:
             bw = csv.DictWriter(bf, fieldnames=fieldnames, extrasaction="ignore")
             bw.writeheader()
             bw.writerows(rows)
@@ -798,7 +806,7 @@ def _write_csv_file(path, rows, fieldnames):
         pass  # a backup failure must never block the main write
 
     tmp = path + ".tmp"
-    with open(tmp, "w", newline="") as f:
+    with open(tmp, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
@@ -861,7 +869,7 @@ def _load_scene_text():
     sp = os.path.join(SCRIPT_DIR, "scene_text.json")
     try:
         if os.path.exists(sp):
-            with open(sp) as sf:
+            with open(sp, encoding="utf-8") as sf:
                 SCENE_TEXT = json.load(sf)
     except (OSError, json.JSONDecodeError) as e:
         print("Warning: could not load scene_text.json: %s" % e)
@@ -1263,7 +1271,7 @@ def categories_path():
 
 def known_categories():
     try:
-        with open(categories_path()) as f:
+        with open(categories_path(), encoding="utf-8") as f:
             cats = json.load(f)
         return cats if isinstance(cats, list) else []
     except (OSError, json.JSONDecodeError):
@@ -1273,7 +1281,7 @@ def known_categories():
 def save_categories(cats):
     os.makedirs(os.path.dirname(categories_path()), exist_ok=True)
     tmp = categories_path() + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(sorted(set(cats)), f, indent=2)
     os.replace(tmp, categories_path())
 
@@ -1565,7 +1573,7 @@ def get_openai_key():
         return key
     if os.path.exists(ENV_PATH):
         try:
-            with open(ENV_PATH) as ef:
+            with open(ENV_PATH, encoding="utf-8") as ef:
                 for line in ef:
                     line = line.strip()
                     if not line or line.startswith("#") or "=" not in line:
@@ -1691,14 +1699,20 @@ def openai_describe_image(img_bytes, mime, key):
 
 
 # -- Versioning ------------------------------------------------------------
-def next_version_name(old_file, scene_number):
+def next_version_name(old_file, scene_number, rows=None):
     """Return (new_output_file, version_number) for a shot's next render.
 
     A version token (``_vN``) may be followed by a suffix such as ``_copy`` on
     a duplicated shot. That suffix must be preserved so the duplicate keeps its
     own naming chain (``_v6_copy`` -> ``_v7_copy``) instead of shedding the
     suffix and colliding with the original's chain (``_v6`` -> ``_v7``), which
-    left duplicate rows pointing at files the CSV no longer matched."""
+    left duplicate rows pointing at files the CSV no longer matched.
+
+    When ``old_file`` is blank (a fresh shot generating for the first time)
+    every shot in a scene would otherwise compute the SAME ``_v1`` name and
+    silently overwrite each other's images / share one identity key. Pass
+    ``rows`` so the v1 name is uniquified against existing output_files AND
+    files already on disk."""
     if old_file:
         ext = os.path.splitext(old_file)[1] or ".png"
         stem = (old_file[:-len(ext)] if ext and old_file.endswith(ext)
@@ -1709,7 +1723,20 @@ def next_version_name(old_file, scene_number):
             new_stem = "%s_v%d%s" % (stem[:m.start()], new_v, stem[m.end():])
             return new_stem + ext, new_v
         return "%s_v2%s" % (stem, ext), 2
-    return "%s_sc_%s_v1.png" % (file_prefix(), scene_number or "XX"), 1
+    taken = {(r.get("output_file") or "").strip() for r in (rows or [])}
+    fd = frames_dir()
+
+    def is_free(name):
+        return name not in taken and not os.path.exists(os.path.join(fd, name))
+
+    base = "%s_sc_%s_v1.png" % (file_prefix(), scene_number or "XX")
+    if is_free(base):
+        return base, 1
+    stem, ext = os.path.splitext(base)
+    n = 2
+    while not is_free("%s_%d%s" % (stem, n, ext)):
+        n += 1
+    return "%s_%d%s" % (stem, n, ext), 1
 
 
 def push_version(shot, old_file):
@@ -1794,10 +1821,16 @@ def _commit_edit(old_file, img_bytes, edit_prompt, quality=None):
         if idx is None:
             raise ApiError("Shot vanished during edit: " + old_file, 409)
         output_file, new_v = next_version_name(old_file,
-                                               shot.get("scene_number", "XX"))
+                                               shot.get("scene_number", "XX"),
+                                               rows)
         fd = frames_dir()
         out_path = os.path.join(fd, output_file)
         os.makedirs(fd, exist_ok=True)
+        # Guard against clobbering an existing frame: a concurrent
+        # generate/edit on this shot may have already written this version
+        # name (both readers saw the same _vN under a prior lock).
+        if os.path.exists(out_path):
+            raise ApiError("Version file already exists: " + output_file, 409)
         with open(out_path, "wb") as of:
             of.write(img_bytes)
         push_version(shot, old_file)
@@ -1805,8 +1838,8 @@ def _commit_edit(old_file, img_bytes, edit_prompt, quality=None):
         shot["status"] = "edited"
         shot["generation_method"] = "edit"
         shot["endpoint"] = "/v1/images/edits (multipart/form-data POST)"
-        shot["estimated_cost"] = QUALITY_COST.get(active_quality(), "$0.07")
-        shot["quality"] = active_quality()
+        shot["estimated_cost"] = QUALITY_COST.get(quality, "$0.07")
+        shot["quality"] = quality
         shot["prompt"] = edit_prompt
         shot["source_frame"] = old_file
         shot["iteration_count"] = str(new_v)
@@ -1819,7 +1852,8 @@ def _commit_edit(old_file, img_bytes, edit_prompt, quality=None):
 # Generate/edit calls hold a worker thread for up to 3 minutes each; a
 # per-IP semaphore caps how many can be in flight at once (503 beyond that).
 THROTTLED_ROUTES = {"/api/generate", "/api/edit", "/api/generate_ref",
-                    "/api/ref_edit", "/api/mass_regen", "/api/describe_ref"}
+                    "/api/ref_edit", "/api/mass_regen", "/api/describe_ref",
+                    "/api/ref_variations", "/api/generate_from_hero"}
 _GEN_SEMS = {}
 _GEN_SEMS_LOCK = threading.Lock()
 
@@ -2221,7 +2255,7 @@ class Handler(BaseHTTPRequestHandler):
             if not new_row.get("status"):
                 new_row["status"] = "pending"
             sc = new_row.get("scene_number", "")
-            existing = [int(r.get("shot_number") or 0) for r in rows
+            existing = [safe_int(r.get("shot_number")) for r in rows
                         if r.get("scene_number") == sc]
             new_row["shot_number"] = str(max(existing) + 1 if existing else 1)
             # Uniquify the output filename — duplicate output_files would
@@ -2355,10 +2389,16 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 idx, shot = resolve_row(rows, data)
             old_file = (shot.get("output_file") or "").strip()
-            output_file, new_v = next_version_name(old_file, scene)
+            output_file, new_v = next_version_name(old_file, scene, rows)
             fd = frames_dir()
             out_path = os.path.join(fd, output_file)
             os.makedirs(fd, exist_ok=True)
+            # Never overwrite an existing frame: a blank-output_file shot could
+            # otherwise collide with a sibling's v1, and a concurrent render
+            # could collide on the same _vN. Fail loudly instead (matches the
+            # reference-image write guard).
+            if os.path.exists(out_path):
+                raise ApiError("Version file already exists: " + output_file, 409)
             with open(out_path, "wb") as of:
                 of.write(img_bytes)
             if old_file:
@@ -3141,8 +3181,20 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError("No project loaded — restart or switch to a "
                                "project first", 500)
             PROJECT[field] = value
+            name = PROJECT["name"]
             settings = dict(PROJECT)
-        save_settings(settings)
+        # Persist based on the on-disk settings plus the single changed field,
+        # not the live PROJECT dict: PROJECT carries session-scoped CLI path
+        # overrides (--csv-path etc.) that must never be baked into
+        # project.json (they are re-applied from CLI_OVERRIDES on every load).
+        try:
+            with open(settings_path(name), encoding="utf-8") as f:
+                persisted = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            persisted = {}
+        persisted["name"] = name
+        persisted[field] = value
+        save_settings(persisted)
         self._json({"ok": True,
                     "settings": {k: settings.get(k, "") for k in
                                  ("quality", "model", "file_prefix",
