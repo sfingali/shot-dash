@@ -662,6 +662,18 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--surface-3);border:1p
 </div>
 </div>
 
+<div class="modal" id="promptModal">
+<div class="modal-inner">
+<h3 id="promptTitle">Enter value</h3>
+<p id="promptMsg" style="margin-bottom:var(--s2);color:var(--text-dim)"></p>
+<div class="field"><input id="promptInput"></div>
+<div class="modal-foot">
+  <button class="btn" data-act="promptNo">Cancel</button>
+  <button class="btn btn-accent" id="promptYesBtn" data-act="promptYes">OK</button>
+</div>
+</div>
+</div>
+
 <div class="modal" id="fieldModal">
 <div class="modal-inner">
 <h3 id="fieldModalLabel">Edit</h3>
@@ -802,6 +814,7 @@ const S = {
   refEditFile: null,
   heroEditId: null,
   shotKeys: [],         // unique key per S.shots row (dedupes duplicate output_file)
+  sceneThumbs: {},      // scene_number -> first frame thumb url (O(1) shotlist lookup)
 };
 const $ = id => document.getElementById(id);
 const SHOT_COLS = ['shot_number','scene_number','status','characters','hero_tags','location','lens','generation_method','iteration_count','estimated_cost','verbatim_instructions','output_file'];
@@ -943,12 +956,22 @@ function trackJob(jobId, label){
   chip.innerHTML = '<span class="dot"></span><span></span><span class="t"></span>';
   chip.children[1].textContent = label;
   $('jobs').appendChild(chip);
+  let attempts = 0;
+  const MAX_ATTEMPTS = 120;   // ~5 minutes at 2.5s intervals — stop polling a stuck job
+  const endJob = () => chip.remove();
   const poll = async () => {
     let j;
     try { j = await api('api/job_status?id=' + encodeURIComponent(jobId)); }
     catch (e){ chip.remove(); toast(e.message, {error: true}); return; }
     chip.querySelector('.t').textContent = j.done + '/' + j.total;
-    if (j.status === 'running'){ setTimeout(poll, 2500); return; }
+    if (j.status === 'running'){
+      if (++attempts >= MAX_ATTEMPTS){
+        endJob();
+        toast(label + ' timed out after ' + Math.round(MAX_ATTEMPTS * 2.5 / 60) + ' min — the server may still be working.', {error: true});
+        return;
+      }
+      setTimeout(poll, 2500); return;
+    }
     chip.remove();
     const nOk = (j.files || []).length, nErr = (j.errors || []).length;
     toast(label + ' finished — ' + nOk + ' updated' + (nErr ? ', ' + nErr + ' failed' : ''),
@@ -1092,12 +1115,15 @@ async function fetchShots(){
   S.shots = shotsRes.shots || [];
   computeShotKeys();
   const frames = framesRes.frames || {}, framesLower = framesRes.frames_lower || {};
+  S.sceneThumbs = {};   // scene_number -> first frame thumb (built once here, not per shotlist row)
   for (const s of S.shots){
     const fn = s.output_file || '';
     const rel = frames[fn] || framesLower[fn.toLowerCase()];
     s._frame_url = rel ? 'api/thumb/frame/' + encodeURIComponent(rel) : null;      // 200px — grid + version strip
     s._preview_url = rel ? 'api/preview/frame/' + encodeURIComponent(rel) : null;  // 600px — viewer panel
     s._full_url = rel ? 'api/frame/' + encodeURIComponent(rel) : null;             // original — lightbox
+    const sc = (s.scene_number || '').trim();
+    if (sc && s._frame_url && !(sc in S.sceneThumbs)) S.sceneThumbs[sc] = s._frame_url;
   }
   // scene filter options (keep the current selection when still valid)
   const sf = $('sceneFilter');
@@ -1291,6 +1317,8 @@ function displayedShots(){
     if (q){
       let hit = false;
       for (const c of SHOT_COLS){ if (String(s[c] || '').toLowerCase().includes(q)){ hit = true; break; } }
+      // hero_tags holds ids ('hero_3'); also match the resolved display names.
+      if (!hit && splitTags(s.hero_tags).map(heroLabel).join(' ').toLowerCase().includes(q)) hit = true;
       if (!hit) return;
     }
     list.push({s, i, key: keyFor(s, i)});
@@ -1333,7 +1361,11 @@ function renderGrid(){
       let v = s[c] || '';
       if (c === 'status') return '<td>' + statusPill(v) + '</td>';
       if (c === 'hero_tags') return '<td>' + heroBadges(v) + '</td>';
-      if (c === 'verbatim_instructions') v = String(v).substring(0, 140);
+      if (c === 'verbatim_instructions'){
+        const full = String(v);
+        const trunc = full.length > 140;
+        return '<td' + (trunc ? ' title="' + escA(full) + '"' : '') + '>' + esc(full.substring(0, 140)) + (trunc ? '…' : '') + '</td>';
+      }
       if (c === 'output_file') return '<td class="mono">' + esc(v) + (s._frame_url ? ' 📷' : '') + '</td>';
       return '<td>' + esc(v) + '</td>';
     }).join('');
@@ -1406,6 +1438,15 @@ $('grid').addEventListener('drop', async e => {
 
 /* ============ Viewer ============ */
 const VIEWER_EMPTY_DEFAULT = document.getElementById('viewerEmpty').innerHTML;
+// A 404 on the frame image would otherwise leave a broken-image icon with the
+// empty state hidden. Hide the img and surface the empty state instead.
+$('frameImg').addEventListener('error', () => {
+  const img = $('frameImg');
+  if (!img.getAttribute('src')) return;   // guard the src='' reset from re-firing
+  img.style.display = 'none'; img.src = '';
+  $('viewerEmpty').innerHTML = 'Image could not be loaded.';
+  $('viewerEmpty').style.display = 'block';
+});
 function clearViewer(){
   S.selectedKey = null;
   $('viewerEmpty').innerHTML = VIEWER_EMPTY_DEFAULT;
@@ -1991,8 +2032,8 @@ $('refsGrid').addEventListener('click', async e => {
       fetchRefs();
     } else if (move){
       const fn = move.getAttribute('data-move');
-      const cat = prompt('Move ' + fn.split('/').pop() + ' to category:', fn.includes('/') ? fn.split('/').slice(0, -1).join('/') : '');
-      if (!cat) return;
+      const cat = await inputDlg('Move ' + fn.split('/').pop() + ' to category:', fn.includes('/') ? fn.split('/').slice(0, -1).join('/') : '', 'Move');
+      if (!cat || !cat.trim()) return;
       await api('api/ref_move', {file: fn, category: cat.trim()});
       toast('Moved to ' + cat.trim());
       fetchRefs();
@@ -2158,8 +2199,9 @@ async function generateRef(){
   } finally { end(); }
 }
 async function addCategory(){
-  const cat = prompt('New category path (use / for sub-categories, e.g. locations/motel):', currentRefCategory() + '/');
-  if (!cat || !cat.trim()) return;
+  const def = currentRefCategory().replace(/\/+$/, '');
+  const cat = await inputDlg('New category path (use / for sub-categories, e.g. locations/motel):', def, 'Add');
+  if (!cat) return;
   try {
     const d = await api('api/category_add', {category: cat.trim()});
     toast('Category added: ' + d.category);
@@ -2492,8 +2534,7 @@ function backupSaved(){
 function slThumbForScene(scene){
   const sc = String(scene == null ? '' : scene).trim();
   if (!sc) return '';
-  const hit = S.shots.find(s => (s.scene_number || '').trim() === sc && s._frame_url);
-  return hit ? hit._frame_url : '';
+  return (S.sceneThumbs && S.sceneThumbs[sc]) || '';
 }
 function slThumbCell(scene){
   const url = slThumbForScene(scene);
@@ -2763,8 +2804,26 @@ $('archiveGrid').addEventListener('click', async e => {
 </script>
 <script>
 /* ============ Modals ============ */
-function openModal(id){ if (!overlayJobs) $('genOverlay').classList.remove('on'); $(id).classList.add('open'); }
-function closeModal(id){ const m = $(id); m.classList.remove('open'); m.style.display = ''; m.style.zIndex = ''; if (id === 'confirmModal') settleConfirm(false); }
+const MODAL_FOCUSABLE = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+function trapTab(e){
+  if (e.key !== 'Tab') return;
+  const f = e.currentTarget.querySelectorAll(MODAL_FOCUSABLE);
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+}
+function openModal(id){
+  if (!overlayJobs) $('genOverlay').classList.remove('on');
+  const m = $(id);
+  m.classList.add('open');
+  m.setAttribute('role', 'dialog');
+  m.setAttribute('aria-modal', 'true');
+  m.addEventListener('keydown', trapTab);   // basic focus trap; deduped by name on repeat opens
+  const f = m.querySelectorAll(MODAL_FOCUSABLE);
+  if (f.length) f[0].focus();
+}
+function closeModal(id){ const m = $(id); m.classList.remove('open'); m.style.display = ''; m.style.zIndex = ''; m.removeAttribute('aria-modal'); m.removeEventListener('keydown', trapTab); if (id === 'confirmModal') settleConfirm(false); if (id === 'promptModal') settlePrompt(null); }
 function anyModalOpen(){ return !!document.querySelector('.modal.open'); }
 document.querySelectorAll('.modal').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) closeModal(m.id); });
@@ -2859,8 +2918,8 @@ $('imgActBar').addEventListener('click', async e => {
     } else if (act === 'describe'){
       describeRef(fn);   // describeModal sits after imageModal in the DOM, so it stacks on top
     } else if (act === 'move'){
-      const cat = prompt('Move ' + fn.split('/').pop() + ' to category:', fn.includes('/') ? fn.split('/').slice(0, -1).join('/') : '');
-      if (!cat) return;
+      const cat = await inputDlg('Move ' + fn.split('/').pop() + ' to category:', fn.includes('/') ? fn.split('/').slice(0, -1).join('/') : '', 'Move');
+      if (!cat || !cat.trim()) return;
       await api('api/ref_move', {file: fn, category: cat.trim()});
       closeModal('imageModal');
       toast('Moved to ' + cat.trim());
@@ -2900,8 +2959,32 @@ function confirmDlg(msg, yesLabel){
 }
 function settleConfirm(v){
   $('confirmModal').classList.remove('open');
+  $('confirmModal').removeAttribute('aria-modal');
+  $('confirmModal').removeEventListener('keydown', trapTab);
   if (confirmResolve){ const r = confirmResolve; confirmResolve = null; r(v); }
 }
+/* Text-input dialog — the app's own replacement for the browser's prompt(). */
+let promptResolve = null;
+function inputDlg(msg, defVal, yesLabel){
+  return new Promise(res => {
+    if (promptResolve){ const prev = promptResolve; promptResolve = null; prev(null); }
+    promptResolve = res;
+    $('promptMsg').textContent = msg;
+    $('promptInput').value = defVal || '';
+    $('promptYesBtn').textContent = yesLabel || 'OK';
+    openModal('promptModal');
+    $('promptInput').focus(); $('promptInput').select();   // override openModal's default (Cancel button)
+  });
+}
+function settlePrompt(v){
+  $('promptModal').classList.remove('open');
+  $('promptModal').removeAttribute('aria-modal');
+  $('promptModal').removeEventListener('keydown', trapTab);
+  if (promptResolve){ const r = promptResolve; promptResolve = null; r(v); }
+}
+$('promptInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter'){ e.preventDefault(); settlePrompt($('promptInput').value); }
+});
 
 /* ============ Global action delegation (no inline onclick) ============ */
 const ACTIONS = {
@@ -3016,7 +3099,7 @@ const ACTIONS = {
     const hero = heroById(heroGenTargetId);
     if (!hero) return;
     const quality = $('heroGenQuality').value;   // '' = project default
-      const applyStyle = $('heroGenStyle').checked;
+    const applyStyle = $('heroGenStyle').checked;
     const count = Math.min(9, Math.max(1, parseInt($('heroGenCount').value, 10) || 1));
     closeModal('heroGenModal');
     const total = count;
@@ -3069,6 +3152,8 @@ const ACTIONS = {
   },
   confirmYes: () => settleConfirm(true),
   confirmNo: () => settleConfirm(false),
+  promptYes: () => settlePrompt($('promptInput').value),
+  promptNo: () => settlePrompt(null),
 };
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
@@ -3102,13 +3187,32 @@ $('heroGenCount').addEventListener('input', updateHeroGenCost);
 $('refVarQuality').addEventListener('change', updateRefVarCost);
 $('refVarCount').addEventListener('input', updateRefVarCost);
 $('descGenAllQuality').addEventListener('change', updateDescGenAllCost);
-function onExportChange(e){
+async function onExportChange(e){
   const v = e.target.value;
   if (!v) return;
   const parts = v.split('|');
-  window.location = 'api/export?what=' + parts[0] + '&format=' + parts[1];
   e.target.value = '';
-  toast('Export started — check your downloads');
+  // fetch + blob download instead of navigating window.location — an error or a
+  // non-attachment response there would replace the whole SPA.
+  const building = toast('Export started — building download…', {timeout: 60000});
+  try {
+    const r = await fetch('api/export?what=' + parts[0] + '&format=' + parts[1]);
+    if (!r.ok) throw new Error('Export failed (HTTP ' + r.status + ')');
+    const blob = await r.blob();
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(cd);
+    const name = m ? decodeURIComponent(m[1].replace(/"$/, '')) : (parts[0] + '.' + parts[1]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    building.remove();
+    toast('Export ready — check your downloads');
+  } catch (err){
+    building.remove();
+    toast(err.message, {error: true});
+  }
 }
 $('exportSel').addEventListener('change', onExportChange);
 $('slExportSel').addEventListener('change', onExportChange);
