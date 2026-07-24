@@ -2256,9 +2256,18 @@ class Handler(BaseHTTPRequestHandler):
             by_file = {}
             for r in rows:
                 by_file.setdefault((r.get("output_file") or "").strip(), r)
+            # Each order item is either an output_file string or a
+            # {"row_index": n} dict for rows whose output_file is blank.
+            def resolve_item(item):
+                if isinstance(item, dict):
+                    try:
+                        return resolve_row(rows, item)[1]
+                    except ApiError:
+                        return None
+                return by_file.get((item or "").strip())
             targets, seen = [], set()
-            for fn in order:
-                r = by_file.get((fn or "").strip())
+            for item in order:
+                r = resolve_item(item)
                 if r is not None and id(r) not in seen:
                     seen.add(id(r))
                     targets.append(r)
@@ -2287,10 +2296,19 @@ class Handler(BaseHTTPRequestHandler):
             by_file = {}
             for r in rows:
                 by_file.setdefault((r.get("output_file") or "").strip(), r)
+            # Each order item is either an output_file string or a
+            # {"row_index": n} dict for rows whose output_file is blank.
+            def resolve_item(item):
+                if isinstance(item, dict):
+                    try:
+                        return resolve_row(rows, item)[1]
+                    except ApiError:
+                        return None
+                return by_file.get((item or "").strip())
             n = 0
             seen = set()
-            for fn in order:
-                r = by_file.get((fn or "").strip())
+            for item in order:
+                r = resolve_item(item)
                 if r is not None and id(r) not in seen:
                     n += 1
                     r["shot_number"] = str(n)

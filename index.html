@@ -984,6 +984,7 @@ async function fetchProjects(){
     const o = document.createElement('option'); o.value = p; o.textContent = p; sel.appendChild(o);
   });
   sel.value = d.active || '';
+  S.activeProject = d.active || '';
   $('filmName').textContent = (d.active || '').replace(/[-_]/g, ' ');
   document.title = 'Shot Dash — ' + (d.active || '');
   S.qualities = d.qualities || ['low','medium','high'];
@@ -1169,12 +1170,15 @@ async function fetchRefs(){
     renderChips(); // show all initially
     const inp = $(targetInput);
     if (inp) {
-      // Filter chips as user types (only check the text after the last comma — the new tag being typed)
-      inp.addEventListener('input', () => {
+      // Filter chips as user types (only check the text after the last comma — the new tag being typed).
+      // fetchRefs() runs on every refresh, so drop the previous handler first to avoid stacking listeners.
+      if (inp._chipInputHandler) inp.removeEventListener('input', inp._chipInputHandler);
+      inp._chipInputHandler = () => {
         const lastComma = inp.value.lastIndexOf(',');
         const typing = lastComma >= 0 ? inp.value.substring(lastComma + 1) : inp.value;
         renderChips(typing);
-      });
+      };
+      inp.addEventListener('input', inp._chipInputHandler);
     }
   });
   updateBadges();
@@ -1381,7 +1385,13 @@ $('grid').addEventListener('drop', async e => {
   const from = order.indexOf(dragKey), to = order.indexOf(targetKey);
   if (from < 0 || to < 0) return;
   order.splice(to, 0, order.splice(from, 1)[0]);
-  const files = order.map(k => { const f = shotByKey(k); return f ? (f.shot.output_file || '') : ''; }).filter(Boolean);
+  // Keep rows that have no output_file: address them by row_index instead of
+  // dropping them, so a partial reorder doesn't silently renumber them to the end.
+  const files = order.map(k => {
+    const p = payloadFor(k);
+    if (!p) return null;
+    return p.output_file !== undefined ? p.output_file : {row_index: p.row_index};
+  }).filter(Boolean);
   dragKey = null;
   // Filtered view → reorder only within the visible subset (rows keep the
   // numbers the subset already owned); unfiltered → global renumbering.
@@ -1776,11 +1786,14 @@ function refKeywords(){
     if (h.category === 'characters') chars.add(n);
     else if (h.category === 'locations') locs.add(n);
   }
-  // hand-tuned fallbacks for loosely-named / uncategorized images
-  ['ben','waif','marie','jack','mother','woman in white','lady in white','others','the man','preston','jamie','ricky','neighbor','lawyer','schrodinger']
-    .forEach(x => chars.add(x));
-  ['cabin','suburban','intersection','broken bow','motel','forest','woods','bridge','hospital','court','mansion','new york','institution','house','freeway','driveway','road']
-    .forEach(x => locs.add(x));
+  // hand-tuned fallbacks for loosely-named / uncategorized images — these are
+  // WAIF-specific proper nouns, so only apply them to the-waif project.
+  if (S.activeProject === 'the-waif'){
+    ['ben','waif','marie','jack','mother','woman in white','lady in white','others','the man','preston','jamie','ricky','neighbor','lawyer','schrodinger']
+      .forEach(x => chars.add(x));
+    ['cabin','suburban','intersection','broken bow','motel','forest','woods','bridge','hospital','court','mansion','new york','institution','house','freeway','driveway','road']
+      .forEach(x => locs.add(x));
+  }
   refKeywordCache = {chars: [...chars].filter(Boolean), locs: [...locs].filter(Boolean)};
   return refKeywordCache;
 }
@@ -1793,8 +1806,15 @@ function refTopCat(fn){
   if (top === 'hero_props' || top === 'vehicles') return 'props';
   const low = fn.toLowerCase();
   const kw = refKeywords();
-  if (kw.chars.some(w => low.includes(w))) return 'characters';
-  if (kw.locs.some(w => low.includes(w))) return 'locations';
+  // Word-boundary match (boundary = anything that isn't an ASCII letter) so
+  // 'ben' matches 'ben_motel.png' or 'ben.png' but not 'bench'.
+  const matchesKw = (hay, w) => {
+    if (!w) return false;
+    const re = new RegExp('(^|[^a-z])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z]|$)');
+    return re.test(hay);
+  };
+  if (kw.chars.some(w => matchesKw(low, w))) return 'characters';
+  if (kw.locs.some(w => matchesKw(low, w))) return 'locations';
   return 'props';
 }
 /* Sub-category label for a file, within its tab (leaf of its category path). */
@@ -2236,7 +2256,9 @@ function openHeroModal(id){
   openModal('heroModal');
   $('heroName').focus();
 }
+let savingHero = false;
 async function saveHero(){
+  if (savingHero) return;   // guard against double-submit while the save is in flight
   const name = $('heroName').value.trim();
   if (!name){
     $('heroNameErr').classList.add('on');
@@ -2252,6 +2274,7 @@ async function saveHero(){
     notes: $('heroNotes').value.trim(),
     ref_image: $('heroRef').value.trim(),
   };
+  savingHero = true;
   try {
     if (S.heroEditId){
       const h = heroById(S.heroEditId);
@@ -2271,6 +2294,7 @@ async function saveHero(){
     S.refView = 'heroes';
     renderRefs();
   } catch (e){ toast(e.message, {error: true}); }
+  finally { savingHero = false; }
 }
 async function deleteHero(id){
   const h = heroById(id);
@@ -2301,6 +2325,11 @@ function generateFromHero(id){
   heroGenTargetId = id;
   $('heroGenLabel').textContent = 'Hero: ' + h.name;
   $('heroGenPrompt').value = h.name + ': ' + (h.description || '');
+  // Reset the rest of the form so it doesn't carry over the last run's settings
+  $('heroGenCount').value = 1;
+  $('heroGenStyle').checked = false;
+  $('heroGenQuality').value = '';   // '' = project default
+  updateHeroGenCost();
   openModal('heroGenModal');
   $('heroGenPrompt').focus();
 }
@@ -2734,7 +2763,7 @@ $('archiveGrid').addEventListener('click', async e => {
 </script>
 <script>
 /* ============ Modals ============ */
-function openModal(id){ $('genOverlay').classList.remove('on'); overlayJobs=0; $(id).classList.add('open'); }
+function openModal(id){ if (!overlayJobs) $('genOverlay').classList.remove('on'); $(id).classList.add('open'); }
 function closeModal(id){ const m = $(id); m.classList.remove('open'); m.style.display = ''; m.style.zIndex = ''; if (id === 'confirmModal') settleConfirm(false); }
 function anyModalOpen(){ return !!document.querySelector('.modal.open'); }
 document.querySelectorAll('.modal').forEach(m => {
@@ -2860,6 +2889,9 @@ $('imgActBar').addEventListener('click', async e => {
 let confirmResolve = null;
 function confirmDlg(msg, yesLabel){
   return new Promise(res => {
+    // If a dialog is already awaiting an answer, settle the stale one as
+    // cancelled (false) so its awaiter isn't left hanging when we overwrite it.
+    if (confirmResolve){ const prev = confirmResolve; confirmResolve = null; prev(false); }
     confirmResolve = res;
     $('confirmMsg').textContent = msg;
     $('confirmYesBtn').textContent = yesLabel || 'Confirm';
@@ -2910,7 +2942,8 @@ const ACTIONS = {
   genAll: async () => {
     const pending = S.shots.filter(s => s.status !== 'archived' && !s._frame_url);
     if (!pending.length) { toast('All storyboards already have images', {error: true}); return; }
-    const q = S.settings.quality || 'medium';
+    // Use the same quality the loop below will send so the estimate matches reality.
+    const q = $('genQualitySel').value || S.settings.quality || 'medium';
     const cost = qualityCost(q);
     if (!await confirmDlg('Generate ' + pending.length + ' storyboard' + (pending.length === 1 ? '' : 's') + ' at ' + q + ' quality' + (cost ? ' — est. ' + cost + ' each' : '') + '?', 'Generate All')) return;
     const end = startJob('Generating ' + pending.length + ' storyboards');
@@ -2968,7 +3001,7 @@ const ACTIONS = {
       try {
         let prompt = h.name + ': ' + h.description;
         if (stylePrompt) prompt += '. ' + stylePrompt;
-        await api('api/generate_from_hero', {hero_id: h.id, prompt: prompt});
+        await api('api/generate_from_hero', {hero_id: h.id, prompt: prompt, quality: q});
         ok++;
       } catch (e){ fail++; }
       paint();
@@ -3015,6 +3048,24 @@ const ACTIONS = {
       toast('Generated: ' + ok + ' ok' + (fail ? ', ' + fail + ' failed' : '') + (cancelled ? ' — cancelled' : ''), fail && !ok ? {error: true} : {});
       await fetchRefs();
     }
+  },
+  describeCopy: () => {
+    const text = $('describeText').value;
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(
+        () => toast('Description copied'),
+        () => toast('Copy failed — select the text and copy manually', {error: true}));
+    } else {
+      $('describeText').select();
+      const ok = document.execCommand && document.execCommand('copy');
+      toast(ok ? 'Description copied' : 'Copy failed — select the text and copy manually', ok ? {} : {error: true});
+    }
+  },
+  describeToHero: () => {
+    const text = $('describeText').value;
+    closeModal('describeModal');
+    openHeroModal(null);
+    $('heroDesc').value = text;
   },
   confirmYes: () => settleConfirm(true),
   confirmNo: () => settleConfirm(false),
