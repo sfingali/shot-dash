@@ -187,7 +187,12 @@ def parse_args():
         flag = args[i]
         has_val = i + 1 < len(args)
         if flag == "--port" and has_val:
-            i += 1; PORT = int(args[i])
+            i += 1
+            try:
+                PORT = int(args[i])
+            except ValueError:
+                print("Error: --port must be an integer, got %r" % args[i])
+                sys.exit(1)
         elif flag == "--csv" and has_val:
             i += 1; CLI_OVERRIDES["csv_path"] = args[i]
         elif flag == "--frames-dir" and has_val:
@@ -531,8 +536,9 @@ SHOTLIST_COLUMNS = [
     "Sequence", "VFX Work", "Complexity", "Asset(s)",
     "Notes/Assumptions", "Shot Count", "Cost Each", "Cost Gross",
 ]
-SHOTLIST_FLOAT = {"Order", "Duration(seconds)", "Length(8ths)"}
-SHOTLIST_INT = {"Shot Count", "Cost Each", "Cost Gross"}
+SHOTLIST_FLOAT = {"Order", "Duration(seconds)", "Length(8ths)",
+                  "Cost Each", "Cost Gross"}
+SHOTLIST_INT = {"Shot Count"}
 
 
 def coerce_shotlist_value(col, value):
@@ -1194,7 +1200,13 @@ def infer_location(scene_number, instructions):
 
 
 def autofill_shot(shot):
-    """Fill fountain_text / location / characters when blank."""
+    """Fill fountain_text / location / characters when blank.
+
+    The canon tables (SCENE_TEXT / SCENE_LOOKUP / CHAR_KEYWORDS /
+    LOC_KEYWORDS) are WAIF-specific, so skip autofill entirely for any
+    other project — otherwise WAIF canon leaks into unrelated shots."""
+    if active_project().get("name") != "the-waif":
+        return shot
     sc = (shot.get("scene_number") or "").strip()
     instr = shot.get("verbatim_instructions") or ""
     if sc in SCENE_TEXT and not shot.get("fountain_text"):
@@ -1485,8 +1497,9 @@ def find_in_tree(base_dir, filename):
     base = Path(base_dir)
     for p in base.rglob("*"):
         if p.is_file() and p.name.lower() == name_lower:
-            if THUMB_DIRNAME in p.relative_to(base).parts:
-                continue  # never resolve to a cached thumbnail
+            parts = p.relative_to(base).parts
+            if THUMB_DIRNAME in parts or "_archive" in parts:
+                continue  # never resolve to a thumbnail or archived file
             return str(p)
     return None
 
@@ -1566,10 +1579,25 @@ CT = {
 
 
 # -- OpenAI client ---------------------------------------------------------
+_OPENAI_KEY_CACHE = None
+
+
+def _invalidate_key_cache():
+    """Reset the cached OpenAI key — call after the user changes it."""
+    global _OPENAI_KEY_CACHE
+    _OPENAI_KEY_CACHE = None
+
+
 def get_openai_key():
-    """OPENAI_API_KEY env var wins; otherwise read the configured .env."""
+    """OPENAI_API_KEY env var wins; otherwise read the configured .env.
+    The resolved key is cached in _OPENAI_KEY_CACHE so we don't re-read
+    .env on every request; call _invalidate_key_cache() to force a reload."""
+    global _OPENAI_KEY_CACHE
+    if _OPENAI_KEY_CACHE is not None:
+        return _OPENAI_KEY_CACHE
     key = os.environ.get("OPENAI_API_KEY", "").strip()
     if key:
+        _OPENAI_KEY_CACHE = key
         return key
     if os.path.exists(ENV_PATH):
         try:
@@ -1581,7 +1609,8 @@ def get_openai_key():
                     k, v = line.split("=", 1)
                     if k.strip() in ("OPENAI_KEY", "VOICE_TOOLS_OPENAI_KEY",
                                      "OPENAI_API_KEY"):
-                        return v.strip().strip("'").strip('"')
+                        _OPENAI_KEY_CACHE = v.strip().strip("'").strip('"')
+                        return _OPENAI_KEY_CACHE
         except OSError:
             pass
     return None
@@ -1761,7 +1790,21 @@ def clean_version_history(shot):
         history = json.loads(shot.get("version_history") or "[]")
     except json.JSONDecodeError:
         history = []
-    cleaned = [h for h in history if frame_exists(h)]
+    # Build the set of existing frame basenames in ONE rglob pass instead
+    # of calling frame_exists (an rglob each) per history entry.
+    existing = set()
+    base = Path(frames_dir())
+    if base.is_dir():
+        for p in base.rglob("*"):
+            if not p.is_file():
+                continue
+            parts = p.relative_to(base).parts
+            if THUMB_DIRNAME in parts or "_archive" in parts:
+                continue
+            if os.path.splitext(p.name)[1].lower() in ALLOWED_IMAGE_EXTS:
+                existing.add(p.name.lower())
+    cleaned = [h for h in history
+               if os.path.basename((h or "").strip()).lower() in existing]
     if cleaned != history:
         shot["version_history"] = json.dumps(cleaned)
     return cleaned
@@ -1862,6 +1905,11 @@ def _gen_semaphore(ip):
     with _GEN_SEMS_LOCK:
         sem = _GEN_SEMS.get(ip)
         if sem is None:
+            # Bound the registry so it can't grow unbounded across IPs.
+            # Worst case a flush costs a few extra semaphore allocations;
+            # there's no correctness impact.
+            if len(_GEN_SEMS) > 500:
+                _GEN_SEMS.clear()
             sem = threading.BoundedSemaphore(GEN_CONCURRENCY)
             _GEN_SEMS[ip] = sem
         return sem
@@ -2104,6 +2152,11 @@ class Handler(BaseHTTPRequestHandler):
             self._error("Not found", 404)
 
     # === EXPORT ENDPOINTS ===
+    # Absolute filesystem paths that must never leak into an export dump
+    # (they expose server layout, especially in --public mode).
+    _EXPORT_SENSITIVE_KEYS = {"csv_path", "frames_dir", "refs_dir",
+                              "canon_dir", "shotlist_path"}
+
     def _export(self, parsed):
         """GET /api/export?what=shots|shotlist|all&format=csv|json"""
         q = urllib.parse.parse_qs(parsed.query)
@@ -2136,7 +2189,8 @@ class Handler(BaseHTTPRequestHandler):
         payload = {
             "project": proj.get("name", ""),
             "exported": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "settings": {k: v for k, v in proj.items()},
+            "settings": {k: v for k, v in proj.items()
+                         if k not in self._EXPORT_SENSITIVE_KEYS},
             "shots": shots,
             "shotlist": shotlist,
             "heroes": load_heroes(),
